@@ -1,0 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=Noto+Nastaliq+Urdu:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-garamond bg-gp-dark text-gp-ivory overflow-x-hidden;
+  }
+}
+
+@layer utilities {
+  .text-glow {
+    text-shadow: 0 0 10px rgba(212, 175, 55, 0.5), 0 0 20px rgba(212, 175, 55, 0.3);
+  }
+  
+  .glass-panel {
+    @apply bg-gp-burgundy/40 backdrop-blur-md border border-gp-gold/20 shadow-xl;
+  }
+
+  .vinyl-grooves {
+    background: repeating-radial-gradient(
+      #111,
+      #111 2px,
+      #1a1a1a 3px,
+      #111 4px
+    );
+  }
+}
+
+/* Custom Scrollbar for CDRack */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
