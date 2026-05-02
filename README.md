@@ -28,10 +28,6 @@ A beautifully designed web application for exploring and listening to classic Gh
   - Artist-based browsing and filtering
   - Search functionality by artist
 
-- **Bilingual Support**:
-  - Display artist and song names in both English and Urdu (اردو)
-  - Authentic representation of classical music traditions
-
 - **Responsive Design**:
   - Mobile-friendly interface
   - Beautiful gradient backgrounds with custom color schemes
