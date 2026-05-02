@@ -125,6 +125,8 @@ Ghazals in the playlist follow this structure:
   type: "yt"
 }
 ```
+## Preview
+![Mehfil-e-Ghazal](screenshots/demo.png)
 
 ## About Ghazal Music
 
