@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 
 import { INITIAL_PLAYLIST } from './data/playlist'
+import { POET_BIOS } from './data/poetBios'
+import { GHAZAL_LYRICS } from './data/lyrics'
 
 const COLORS = ['#3d0b15','#162a18','#2a1506','#0d1e2a','#0d2520','#1e0a2e','#2a0a00','#001b2e']
 const fmt = s => { const m=Math.floor(s/60),sec=Math.floor(s%60); return `${m}:${sec<10?'0':''}${sec}` }
@@ -54,16 +56,30 @@ export default function App() {
   const [activeArtist, setActiveArtist] = useState(null)
   const [glideAnim, setGlideAnim] = useState(null)
   const [artistSearch, setArtistSearch] = useState('')
+  const [globalSearch, setGlobalSearch] = useState('')
+  const [favorites, setFavorites] = useState(() => {
+    const saved = localStorage.getItem('ghazalpaglu_favorites')
+    return saved ? JSON.parse(saved) : []
+  })
+  const [selectedPoetBio, setSelectedPoetBio] = useState(null)
+  const [showLyrics, setShowLyrics] = useState(false)
+  const [showShareModal, setShowShareModal] = useState(false)
 
   const artistsList = useMemo(() => {
     const map = {}
     playlist.forEach((t, i) => {
       const name = t.artistEn
-      if(!map[name]) map[name] = { en: name, color: t.color || '#1a1208', tracks: [] }
+      // Filter by global search (poet name or song title)
+      const matchesSearch = name.toLowerCase().includes(globalSearch.toLowerCase()) || 
+                           t.songEn.toLowerCase().includes(globalSearch.toLowerCase())
+      
+      if (globalSearch && !matchesSearch) return
+
+      if(!map[name]) map[name] = { en: name, urdu: t.urduArtist, color: t.color || '#1a1208', tracks: [] }
       map[name].tracks.push({ ...t, globalIdx: i })
     })
     return Object.values(map)
-  }, [playlist])
+  }, [playlist, globalSearch])
 
   // form fields
   const [fUrl, setFUrl]       = useState('')
@@ -122,13 +138,26 @@ export default function App() {
     localStorage.setItem('ghazalpaglu_playlists', JSON.stringify(userPlaylists))
   }, [userPlaylists])
 
+  useEffect(() => {
+    localStorage.setItem('ghazalpaglu_favorites', JSON.stringify(favorites))
+  }, [favorites])
+
 
   /* ── TOAST ── */
-  const showToast = useCallback(msg => {
+  const showToast = useCallback((msg, duration = 2800) => {
     setToast(msg); setToastOn(true)
     clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToastOn(false), 2800)
+    toastTimer.current = setTimeout(() => setToastOn(false), duration)
   }, [])
+
+  const toggleFavorite = useCallback((trackUid) => {
+    setFavorites(prev => {
+      const isFav = prev.includes(trackUid)
+      const next = isFav ? prev.filter(id => id !== trackUid) : [...prev, trackUid]
+      showToast(isFav ? 'Removed from favorites' : 'Added to favorites', 1500)
+      return next
+    })
+  }, [showToast])
 
   /* ── YOUTUBE API ── */
   useEffect(() => {
@@ -303,12 +332,41 @@ export default function App() {
     const handler = e => {
       if (['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) return
       if (e.code === 'Space')      { e.preventDefault(); togglePlay() }
-      if (e.code === 'ArrowRight') nextTrack()
-      if (e.code === 'ArrowLeft')  prevTrack()
+      if (e.code === 'ArrowRight') {
+        if (ytPlayer.current?.getCurrentTime) {
+          ytPlayer.current.seekTo(ytPlayer.current.getCurrentTime() + 10, true)
+          showToast('Seek forward 10s', 1500)
+        }
+      }
+      if (e.code === 'ArrowLeft')  {
+        if (ytPlayer.current?.getCurrentTime) {
+          ytPlayer.current.seekTo(Math.max(0, ytPlayer.current.getCurrentTime() - 10), true)
+          showToast('Seek backward 10s', 1500)
+        }
+      }
+      if (e.key.toLowerCase() === 's') {
+        setShuffle(prev => {
+          const next = !prev
+          showToast(next ? 'Shuffle on' : 'Shuffle off', 1500)
+          return next
+        })
+      }
+      if (e.key.toLowerCase() === 'r') {
+        setRepeat(prev => {
+          const next = !prev
+          showToast(next ? 'Repeat on' : 'Repeat off', 1500)
+          return next
+        })
+      }
+      if (e.key.toLowerCase() === 'f') {
+        if (curIdx >= 0) {
+          toggleFavorite(queue[curIdx].uid)
+        }
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [playing, curIdx])
+  }, [playing, curIdx, queue, toggleFavorite, showToast])
 
   /* ── FETCH YOUTUBE TITLE ── */
   useEffect(() => {
@@ -513,6 +571,15 @@ export default function App() {
                       <rect x="4" y="12" width="22" height="14" rx="4" fill="#7a6028" stroke="#c9a84c" strokeWidth="2"/>
                     </svg>
                   </div>
+
+                  {/* Visualizer Rings */}
+                  {playing && (
+                    <div className="visualizer">
+                      <div className="v-ring" style={{ animationDelay: '0s' }} />
+                      <div className="v-ring" style={{ animationDelay: '0.4s' }} />
+                      <div className="v-ring" style={{ animationDelay: '0.8s' }} />
+                    </div>
+                  )}
                 </div>
 
                 {/* Controls */}
@@ -543,8 +610,34 @@ export default function App() {
               <div className="np-song" style={{marginTop: 10, fontSize: 18, color: 'var(--gold)'}}>{curIdx >= 0 ? queue[curIdx]?.artistEn?.toUpperCase() : 'MEHFIL-E-GHAZAL'}</div>
               <div className="np-sub" style={{marginTop: 5, fontSize: 12, letterSpacing: '0.1em'}}>{curIdx >= 0 ? queue[curIdx]?.songEn?.toUpperCase() : 'Choose a card from the mehfil to begin...'}</div>
 
+              <div className="np-actions" style={{ marginTop: 15, display: 'flex', gap: 10 }}>
+                <button className="np-action-btn" onClick={() => setShowLyrics(v => !v)}>
+                  {showLyrics ? 'Hide Lyrics' : 'شعر Lyrics'}
+                </button>
+                <button className="np-action-btn" onClick={() => setShowShareModal(true)} disabled={curIdx < 0}>
+                  Share Card
+                </button>
+              </div>
+
               {status && <div className="np-status" style={{marginTop: 10}}>{status}</div>}
             </div>
+
+            {/* Lyrics Panel */}
+            {showLyrics && (
+              <div className="lyrics-panel">
+                {curIdx >= 0 && GHAZAL_LYRICS[queue[curIdx].id] ? (
+                  <div className="lyrics-content">
+                    <div className="l-sher">{GHAZAL_LYRICS[queue[curIdx].id].sher}</div>
+                    <div className="l-trans">{GHAZAL_LYRICS[queue[curIdx].id].transliteration}</div>
+                    <div className="l-mean">{GHAZAL_LYRICS[queue[curIdx].id].meaning}</div>
+                  </div>
+                ) : (
+                  <div className="lyrics-placeholder">
+                    Lyrics for this ghazal will be added soon...
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* ── RIGHT ── */}
@@ -562,17 +655,40 @@ export default function App() {
               >
                 Playlists
               </button>
+              <button 
+                className={`rt-tab ${rightTab === 'favorites' ? 'active' : ''}`}
+                onClick={() => setRightTab('favorites')}
+              >
+                Favorites
+              </button>
             </div>
+
+            {rightTab === 'collection' && (
+              <div className="search-wrap" style={{ marginBottom: '12px' }}>
+                <input 
+                  type="text" 
+                  className="global-search" 
+                  placeholder="Search poet or ghazal..." 
+                  value={globalSearch}
+                  onChange={e => setGlobalSearch(e.target.value)}
+                />
+              </div>
+            )}
 
             {rightTab === 'collection' ? (
               <div className="wooden-shelf-wrapper">
                 <div className="wooden-shelf">
                   {artistsList.map((artist, i) => (
                     <div key={i} className="shelf-cubby">
-                      <div className="vinyl-pack" style={{background: artist.color}} onClick={() => { setActiveArtist(artist); setArtistSearch('') }}>
+                      <div className="vinyl-pack" style={{background: artist.color}} onClick={() => { 
+                        setActiveArtist(artist); 
+                        setArtistSearch('');
+                        if (POET_BIOS[artist.en]) setSelectedPoetBio({ ...POET_BIOS[artist.en], en: artist.en });
+                      }}>
                         <div className="pack-spine" />
                         <div className="pack-cover">
-                          <div className="pack-en" style={{fontSize: 12, marginBottom: 8}}>{artist.en}</div>
+                          <div className="pack-urdu" style={{ fontSize: 18 }}>{artist.urdu}</div>
+                          <div className="pack-en" style={{fontSize: 10, marginBottom: 8}}>{artist.en}</div>
                           <div className="pack-count">{artist.tracks.length} {artist.tracks.length === 1 ? 'Track' : 'Tracks'}</div>
                         </div>
                       </div>
@@ -604,6 +720,14 @@ export default function App() {
                           </div>
                           <div className="ao-song-title">{t.songEn}</div>
                           
+                          {/* Heart Icon */}
+                          <button 
+                            className={`ao-fav ${favorites.includes(t.uid) ? 'active' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); toggleFavorite(t.uid); }}
+                          >
+                            ♥
+                          </button>
+
                           {/* Kebab Menu Trigger */}
                           <button 
                             className="ao-kebab" 
@@ -621,8 +745,9 @@ export default function App() {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : rightTab === 'playlists' ? (
               <div className="playlists-view">
+                {/* ... existing playlists view ... */}
                 {Object.keys(userPlaylists).length === 0 ? (
                   <div className="empty-state">
                     No playlists yet. Add vinyls to create one!
@@ -639,29 +764,46 @@ export default function App() {
                           </div>
                         </div>
                         <div className="pc-tracks">
-                          {userPlaylists[pName].map((t, idx) => {
-                            // Find the index of this track within the playlist's tracks array
-                            return (
-                              <div key={idx} className="pc-track" onClick={(e) => {
-                                setQueue(userPlaylists[pName])
-                                loadTrack(idx, true, userPlaylists[pName])
-                              }}>
-                                <div className="pc-track-info">
-                                  <div className="pc-track-song">{t.songEn}</div>
-                                  <div className="pc-track-artist">{t.artistEn}</div>
-                                </div>
-                                <button 
-                                  className="pc-track-remove" 
-                                  onClick={(e) => { e.stopPropagation(); removeFromPlaylist(t.uid, pName); }}
-                                >
-                                  −
-                                </button>
+                          {userPlaylists[pName].map((t, idx) => (
+                            <div key={idx} className="pc-track" onClick={(e) => {
+                              setQueue(userPlaylists[pName])
+                              loadTrack(idx, true, userPlaylists[pName])
+                            }}>
+                              <div className="pc-track-info">
+                                <div className="pc-track-song">{t.songEn}</div>
+                                <div className="pc-track-artist">{t.artistEn}</div>
                               </div>
-                            );
-                          })}
+                              <div className="pc-track-right">
+                                <button className={`pc-fav ${favorites.includes(t.uid) ? 'active' : ''}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(t.uid); }}>♥</button>
+                                <button className="pc-track-remove" onClick={(e) => { e.stopPropagation(); removeFromPlaylist(t.uid, pName); }}>−</button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
-
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="favorites-view">
+                {favorites.length === 0 ? (
+                  <div className="empty-state">
+                    No favorites yet. Click the heart on any track to add it!
+                  </div>
+                ) : (
+                  <div className="fav-list">
+                    {playlist.filter(t => favorites.includes(t.uid)).map((t, idx, arr) => (
+                      <div key={t.uid} className="pc-track" onClick={() => {
+                        setQueue(arr)
+                        loadTrack(idx, true, arr)
+                      }}>
+                        <div className="pc-track-info">
+                          <div className="pc-track-song">{t.songEn}</div>
+                          <div className="pc-track-artist">{t.artistEn}</div>
+                        </div>
+                        <button className="pc-fav active" onClick={(e) => { e.stopPropagation(); toggleFavorite(t.uid); }}>♥</button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -874,6 +1016,110 @@ export default function App() {
         </div>
       )}
 
+      {/* ── SHARE MODAL ── */}
+      {showShareModal && curIdx >= 0 && (
+        <ShareModal 
+          track={queue[curIdx]} 
+          onClose={() => setShowShareModal(false)} 
+        />
+      )}
+
+      {/* ── POET BIO PANEL ── */}
+      {selectedPoetBio && (
+        <div className="bio-panel-overlay" onClick={() => setSelectedPoetBio(null)}>
+          <div className="bio-panel" onClick={e => e.stopPropagation()}>
+            <button className="bio-close" onClick={() => setSelectedPoetBio(null)}>✕</button>
+            <div className="bio-urdu">{selectedPoetBio.urduName}</div>
+            <div className="bio-en">{selectedPoetBio.en}</div>
+            <div className="bio-meta">
+              <span>{selectedPoetBio.years}</span>
+              <span className="dot"></span>
+              <span>{selectedPoetBio.city}</span>
+            </div>
+            <div className="bio-text">{selectedPoetBio.bio}</div>
+            <div className="bio-footer">— MEHFIL-E-GHAZAL —</div>
+          </div>
+        </div>
+      )}
+
     </>
+  )
+}
+
+function ShareModal({ track, onClose }) {
+  const canvasRef = useRef(null)
+  const lyrics = GHAZAL_LYRICS[track.id] || { sher: "رنجش ہی سہی، سہی دل ہی دکھانے کے لیے آ\nپھر سے مجھے چھوڑ کر جانے کے لیے آ" }
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    
+    // Draw background
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height)
+    grad.addColorStop(0, '#2a1506')
+    grad.addColorStop(1, '#0e0b07')
+    ctx.fillStyle = grad
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    
+    // Draw texture (optional)
+    ctx.globalAlpha = 0.05
+    ctx.fillStyle = '#c9a84c'
+    for(let i=0; i<100; i++) {
+      ctx.fillRect(Math.random()*canvas.width, Math.random()*canvas.height, 2, 2)
+    }
+    ctx.globalAlpha = 1.0
+
+    // Draw Gold Border
+    ctx.strokeStyle = '#c9a84c'
+    ctx.lineWidth = 40
+    ctx.strokeRect(0, 0, canvas.width, canvas.height)
+    ctx.lineWidth = 2
+    ctx.strokeRect(60, 60, canvas.width - 120, canvas.height - 120)
+
+    // Draw Urdu Sher
+    ctx.fillStyle = '#f0e6cf'
+    ctx.font = '60px "Amiri", serif'
+    ctx.textAlign = 'center'
+    ctx.direction = 'rtl'
+    const lines = lyrics.sher.split('\n')
+    lines.forEach((line, i) => {
+      ctx.fillText(line, canvas.width / 2, 450 + (i * 100))
+    })
+
+    // Draw Artist
+    ctx.fillStyle = '#c9a84c'
+    ctx.font = '40px "Cinzel", serif'
+    ctx.direction = 'ltr'
+    ctx.fillText(track.artistEn.toUpperCase(), canvas.width / 2, 750)
+
+    // Draw Watermark
+    ctx.globalAlpha = 0.3
+    ctx.font = '30px "Cinzel", serif'
+    ctx.fillText("MEHFIL-E-GHAZAL", canvas.width / 2, 1800)
+    ctx.globalAlpha = 1.0
+
+  }, [track, lyrics])
+
+  const download = () => {
+    const link = document.createElement('a')
+    link.download = `Mehfil-${track.songEn}.png`
+    link.href = canvasRef.current.toDataURL()
+    link.click()
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal share-modal" onClick={e => e.stopPropagation()} style={{ width: '400px', textAlign: 'center' }}>
+        <button className="modal-x" onClick={onClose}>✕</button>
+        <div className="modal-title">Share a Sher</div>
+        <div className="modal-sub">Preview of your verse card</div>
+        
+        <div className="canvas-wrap" style={{ margin: '20px 0', border: '1px solid #c9a84c', overflow: 'hidden', borderRadius: '8px' }}>
+          <canvas ref={canvasRef} width="1080" height="1920" style={{ width: '100%', height: 'auto', display: 'block' }} />
+        </div>
+
+        <button className="btn-primary" onClick={download}>Download as Image</button>
+      </div>
+    </div>
   )
 }
