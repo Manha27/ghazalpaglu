@@ -769,7 +769,7 @@ export default function App() {
                         <div className="pack-spine" />
                         <div className="pack-cover">
                           <div className="pack-urdu" style={{ fontSize: '24px', color: '#ebd173', fontWeight: 'bold' }}>{artist.urdu}</div>
-                          <div className="pack-en" style={{ fontSize: '13px', color: '#ffffff', fontWeight: 'bold', marginBottom: '8px', letterSpacing: '0.05em' }}>{artist.en}</div>
+                          <div className="pack-en" style={{ fontSize: '13px', color: '#f4ebd8', fontWeight: '500', marginBottom: '8px', letterSpacing: '0.05em' }}>{artist.en}</div>
                           <div className="pack-count" style={{ fontSize: '10px', color: '#ebd173', fontWeight: 'bold' }}>{artist.tracks.length} {artist.tracks.length === 1 ? 'Track' : 'Tracks'}</div>
                         </div>
                       </div>

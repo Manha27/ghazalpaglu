@@ -38,7 +38,7 @@ export const CDRack = ({ ghazals, currentTrack, onSelect }) => {
                     {ghazal.poetUrdu}
                   </div>
                   <div>
-                    <h3 className="font-bold text-sm md:text-base leading-tight text-white drop-shadow-md">{ghazal.poet}</h3>
+                    <h3 className="font-semibold text-sm md:text-base leading-tight text-gp-ivory drop-shadow-md">{ghazal.poet}</h3>
                     <p className="text-xs text-gp-ivory/80 italic mt-1 truncate">{ghazal.title}</p>
                   </div>
                 </div>
