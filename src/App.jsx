@@ -672,9 +672,9 @@ export default function App() {
                 {/* Controls */}
                 <div className="controls">
                   <button className={`ctrl-sm ${shuffle?'on':''}`} onClick={() => { setShuffle(s=>!s); showToast(shuffle?'Shuffle off':'Shuffle on') }}>⇌ SHUFFLE</button>
-                  <button className="ctrl-btn" onClick={prevTrack}>&#9664;&#9664;</button>
-                  <button className="play-btn" onClick={togglePlay}>{playing ? '⏸' : '▶'}</button>
-                  <button className="ctrl-btn" onClick={nextTrack}>&#9654;&#9654;</button>
+                  <button className="ctrl-btn" onClick={prevTrack}>&lt;&lt;</button>
+                  <button className="play-btn" onClick={togglePlay}>{playing ? 'PAUSE' : 'PLAY'}</button>
+                  <button className="ctrl-btn" onClick={nextTrack}>&gt;&gt;</button>
                   <button className={`ctrl-sm ${repeat?'on':''}`} onClick={() => { setRepeat(r=>!r); showToast(repeat?'Repeat off':'Repeat on') }}>↺ REPEAT</button>
                 </div>
 
@@ -1289,7 +1289,7 @@ function SendModal({ track, onClose, showToast }) {
 
   const shareWhatsApp = () => {
     const text = `Suno! I've sent you a beautiful ghazal: "${track.songEn}" by ${track.artistEn}\n\nListen to it here on the retro vinyl player:\n${shareUrl}`
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank')
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
   }
 
   const shareTwitter = () => {
