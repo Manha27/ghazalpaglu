@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 
 import { INITIAL_PLAYLIST } from './data/playlist'
-import { POET_BIOS } from './data/poetBios'
-import { GHAZAL_LYRICS } from './data/lyrics'
 
 const COLORS = ['#3d0b15','#162a18','#2a1506','#0d1e2a','#0d2520','#1e0a2e','#2a0a00','#001b2e']
 const fmt = s => { const m=Math.floor(s/60),sec=Math.floor(s%60); return `${m}:${sec<10?'0':''}${sec}` }
@@ -61,22 +59,31 @@ export default function App() {
     const saved = localStorage.getItem('ghazalpaglu_favorites')
     return saved ? JSON.parse(saved) : []
   })
-  const [selectedPoetBio, setSelectedPoetBio] = useState(null)
-  const [showLyrics, setShowLyrics] = useState(false)
-  const [showShareModal, setShowShareModal] = useState(false)
+  const [showSendModal, setShowSendModal] = useState(false)
+  const [receivedNote, setReceivedNote] = useState(null)
+  const [addingToPlaylistName, setAddingToPlaylistName] = useState(null)
+  const [editingPlaylistName, setEditingPlaylistName] = useState(null)
+  const [editNameInput, setEditNameInput] = useState('')
+  const [showAddFromMehfilModal, setShowAddFromMehfilModal] = useState(false)
+  const [playlistKebabMenu, setPlaylistKebabMenu] = useState(null)
 
   const artistsList = useMemo(() => {
     const map = {}
     playlist.forEach((t, i) => {
-      const name = t.artistEn
+      const name = t.artistEn?.trim()
+      if (!name) return
       // Filter by global search (poet name or song title)
       const matchesSearch = name.toLowerCase().includes(globalSearch.toLowerCase()) || 
                            t.songEn.toLowerCase().includes(globalSearch.toLowerCase())
       
       if (globalSearch && !matchesSearch) return
 
-      if(!map[name]) map[name] = { en: name, urdu: t.urduArtist, color: t.color || '#1a1208', tracks: [] }
-      map[name].tracks.push({ ...t, globalIdx: i })
+      const existingKey = Object.keys(map).find(k => k.toLowerCase() === name.toLowerCase())
+      if (existingKey) {
+        map[existingKey].tracks.push({ ...t, globalIdx: i })
+      } else {
+        map[name] = { en: name, urdu: t.urduArtist || name, color: t.color || '#1a1208', tracks: [{ ...t, globalIdx: i }] }
+      }
     })
     return Object.values(map)
   }, [playlist, globalSearch])
@@ -142,12 +149,19 @@ export default function App() {
     localStorage.setItem('ghazalpaglu_favorites', JSON.stringify(favorites))
   }, [favorites])
 
+  useEffect(() => {
+    if (tonearmDown && toast === 'Click the golden tonearm to play.') {
+      setToastOn(false)
+    }
+  }, [tonearmDown, toast])
 
   /* ── TOAST ── */
   const showToast = useCallback((msg, duration = 2800) => {
     setToast(msg); setToastOn(true)
     clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToastOn(false), duration)
+    if (duration > 0) {
+      toastTimer.current = setTimeout(() => setToastOn(false), duration)
+    }
   }, [])
 
   const toggleFavorite = useCallback((trackUid) => {
@@ -179,7 +193,11 @@ export default function App() {
                 else nextTrack()
               }
             },
-            onError: () => { showToast('Video unavailable — try another'); setPlaying(false) }
+            onError: () => { 
+              showToast('Video unavailable — skipping...', 2000)
+              setPlaying(false)
+              setTimeout(() => nextTrack(), 2000)
+            }
           }
         })
       }
@@ -236,6 +254,33 @@ export default function App() {
       }
     }
   }, [showToast])
+
+  // Handle shared track from URL query parameter on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const trackUid = params.get('track')
+    const note = params.get('note')
+    
+    if (trackUid) {
+      const idx = playlistRef.current.findIndex(t => t.uid === trackUid)
+      if (idx !== -1) {
+        if (note) {
+          setReceivedNote({
+            text: note,
+            trackIdx: idx
+          })
+        } else {
+          // No note, just load the track and auto-play
+          setTimeout(() => {
+            loadTrack(idx, true, playlistRef.current)
+            setTonearmDown(true)
+            showToast('Playing shared ghazal! 🎵')
+          }, 1500)
+        }
+      }
+    }
+  }, [loadTrack, showToast])
+
 
   /* ── NEXT / PREV ── */
   const nextTrack = useCallback(() => {
@@ -308,7 +353,7 @@ export default function App() {
        setQueue(playlist)
        loadTrack(globalIdx, false, playlist)
        setGlideAnim(null)
-       showToast('Click the golden tonearm to play.')
+       showToast('Click the golden tonearm to play.', 0)
     }, 800)
   }
 
@@ -505,6 +550,48 @@ export default function App() {
 
 
 
+  const handleSaveRename = (oldName) => {
+    const trimmed = editNameInput.trim()
+    if (!trimmed) {
+      showToast('Playlist name cannot be empty')
+      return
+    }
+    if (trimmed === oldName) {
+      setEditingPlaylistName(null)
+      return
+    }
+    if (userPlaylists[trimmed]) {
+      showToast('A playlist with that name already exists')
+      return
+    }
+    setUserPlaylists(prev => {
+      const updated = { ...prev }
+      updated[trimmed] = updated[oldName]
+      delete updated[oldName]
+      return updated
+    })
+    setEditingPlaylistName(null)
+    showToast(`Playlist renamed to "${trimmed}"`)
+  }
+
+  const handleTrackClickInAddMode = (track) => {
+    setUserPlaylists(prev => {
+      const current = prev[addingToPlaylistName] || []
+      const exists = current.some(t => t.uid === track.uid)
+      let updated
+      if (exists) {
+        updated = current.filter(t => t.uid !== track.uid)
+        showToast(`Removed "${track.songEn}" from ${addingToPlaylistName}`)
+      } else {
+        updated = [...current, track]
+        showToast(`Added "${track.songEn}" to ${addingToPlaylistName}`)
+      }
+      return { ...prev, [addingToPlaylistName]: updated }
+    })
+  }
+
+
+
   const getVolIcon = () => {
     if (volume === 0) return (
       <svg viewBox="0 0 24 24" width="22" height="22" fill="var(--gold)"><path d="M3.63 3.63L2.22 5.04L7 9.83V15h4l5 5V12.83l3.07 3.07c-.62.52-1.31.94-2.07 1.21v2.06c1.3-.33 2.48-.96 3.5-1.82l2.48 2.48l1.41-1.41L3.63 3.63zM12 4L9.91 6.09L12 8.18V4zM16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zM19 12c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71z"/></svg>
@@ -610,34 +697,19 @@ export default function App() {
               <div className="np-song" style={{marginTop: 10, fontSize: 18, color: 'var(--gold)'}}>{curIdx >= 0 ? queue[curIdx]?.artistEn?.toUpperCase() : 'MEHFIL-E-GHAZAL'}</div>
               <div className="np-sub" style={{marginTop: 5, fontSize: 12, letterSpacing: '0.1em'}}>{curIdx >= 0 ? queue[curIdx]?.songEn?.toUpperCase() : 'Choose a card from the mehfil to begin...'}</div>
 
-              <div className="np-actions" style={{ marginTop: 15, display: 'flex', gap: 10 }}>
-                <button className="np-action-btn" onClick={() => setShowLyrics(v => !v)}>
-                  {showLyrics ? 'Hide Lyrics' : 'شعر Lyrics'}
-                </button>
-                <button className="np-action-btn" onClick={() => setShowShareModal(true)} disabled={curIdx < 0}>
-                  Share Card
+              <div className="np-actions" style={{ marginTop: 15 }}>
+                <button 
+                  className="np-action-btn" 
+                  onClick={() => setShowSendModal(true)} 
+                  disabled={curIdx < 0}
+                  style={{ width: '100%', padding: '12px 18px', fontSize: '12px', fontWeight: 'bold' }}
+                >
+                  ✉ SEND A GHAZAL
                 </button>
               </div>
 
               {status && <div className="np-status" style={{marginTop: 10}}>{status}</div>}
             </div>
-
-            {/* Lyrics Panel */}
-            {showLyrics && (
-              <div className="lyrics-panel">
-                {curIdx >= 0 && GHAZAL_LYRICS[queue[curIdx].id] ? (
-                  <div className="lyrics-content">
-                    <div className="l-sher">{GHAZAL_LYRICS[queue[curIdx].id].sher}</div>
-                    <div className="l-trans">{GHAZAL_LYRICS[queue[curIdx].id].transliteration}</div>
-                    <div className="l-mean">{GHAZAL_LYRICS[queue[curIdx].id].meaning}</div>
-                  </div>
-                ) : (
-                  <div className="lyrics-placeholder">
-                    Lyrics for this ghazal will be added soon...
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           {/* ── RIGHT ── */}
@@ -677,19 +749,28 @@ export default function App() {
 
             {rightTab === 'collection' ? (
               <div className="wooden-shelf-wrapper">
+                {addingToPlaylistName && (
+                  <div className="add-mode-banner">
+                    <span>Adding tracks to <strong>{addingToPlaylistName}</strong></span>
+                    <button className="add-mode-done" onClick={() => {
+                      setAddingToPlaylistName(null)
+                      setRightTab('playlists')
+                      showToast(`Saved playlist "${addingToPlaylistName}"!`)
+                    }}>Done</button>
+                  </div>
+                )}
                 <div className="wooden-shelf">
                   {artistsList.map((artist, i) => (
                     <div key={i} className="shelf-cubby">
                       <div className="vinyl-pack" style={{background: artist.color}} onClick={() => { 
                         setActiveArtist(artist); 
                         setArtistSearch('');
-                        if (POET_BIOS[artist.en]) setSelectedPoetBio({ ...POET_BIOS[artist.en], en: artist.en });
                       }}>
                         <div className="pack-spine" />
                         <div className="pack-cover">
-                          <div className="pack-urdu" style={{ fontSize: 18 }}>{artist.urdu}</div>
-                          <div className="pack-en" style={{fontSize: 10, marginBottom: 8}}>{artist.en}</div>
-                          <div className="pack-count">{artist.tracks.length} {artist.tracks.length === 1 ? 'Track' : 'Tracks'}</div>
+                          <div className="pack-urdu" style={{ fontSize: '24px', color: '#ebd173', fontWeight: 'bold' }}>{artist.urdu}</div>
+                          <div className="pack-en" style={{ fontSize: '13px', color: '#ffffff', fontWeight: 'bold', marginBottom: '8px', letterSpacing: '0.05em' }}>{artist.en}</div>
+                          <div className="pack-count" style={{ fontSize: '10px', color: '#ebd173', fontWeight: 'bold' }}>{artist.tracks.length} {artist.tracks.length === 1 ? 'Track' : 'Tracks'}</div>
                         </div>
                       </div>
                     </div>
@@ -712,35 +793,58 @@ export default function App() {
                       />
                     </div>
                     <div className="ao-vinyls">
-                      {activeArtist.tracks.filter(t => t.songEn.toLowerCase().includes(artistSearch.toLowerCase())).map((t) => (
-                        <div key={t.uid} className="ao-vinyl" onClick={(e) => handleTrackSelect(e, t.globalIdx)} title="Click to load">
-                          <div className="rv-inner" style={{background: t.color || '#1a1208'}}>
-                            <div className="rv-en" style={{marginTop: 0, fontSize: 8}}>{t.artistEn?.split(' ')[0]}</div>
-                            <div className="rv-hole" />
-                          </div>
-                          <div className="ao-song-title">{t.songEn}</div>
-                          
-                          {/* Heart Icon */}
-                          <button 
-                            className={`ao-fav ${favorites.includes(t.uid) ? 'active' : ''}`}
-                            onClick={(e) => { e.stopPropagation(); toggleFavorite(t.uid); }}
-                          >
-                            ♥
-                          </button>
-
-                          {/* Kebab Menu Trigger */}
-                          <button 
-                            className="ao-kebab" 
+                      {activeArtist.tracks.filter(t => t.songEn.toLowerCase().includes(artistSearch.toLowerCase())).map((t) => {
+                        const isSelectedInAddMode = addingToPlaylistName && userPlaylists[addingToPlaylistName]?.some(pt => pt.uid === t.uid);
+                        return (
+                          <div 
+                            key={t.uid} 
+                            className={`ao-vinyl ${isSelectedInAddMode ? 'selected-in-add-mode' : ''}`} 
                             onClick={(e) => {
-                              e.stopPropagation();
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              setKebabMenu({ uid: t.uid, x: rect.left, y: rect.top, track: t });
-                            }}
+                              if (addingToPlaylistName) {
+                                handleTrackClickInAddMode(t)
+                              } else {
+                                handleTrackSelect(e, t.globalIdx)
+                              }
+                            }} 
+                            title={addingToPlaylistName ? "Click to add/remove from playlist" : "Click to load"}
                           >
-                            ⋮
-                          </button>
-                        </div>
-                      ))}
+                            <div className="rv-inner" style={{background: t.color || '#1a1208'}}>
+                              <div className="rv-en" style={{marginTop: 0, fontSize: 8}}>{t.artistEn?.split(' ')[0]}</div>
+                              <div className="rv-hole" />
+                            </div>
+                            <div className="ao-song-title">{t.songEn}</div>
+                            
+                            {/* Checkmark in Add Mode */}
+                            {isSelectedInAddMode && (
+                              <div className="add-mode-checkmark">✓</div>
+                            )}
+                            
+                            {/* Heart Icon */}
+                            {!addingToPlaylistName && (
+                              <button 
+                                className={`ao-fav ${favorites.includes(t.uid) ? 'active' : ''}`}
+                                onClick={(e) => { e.stopPropagation(); toggleFavorite(t.uid); }}
+                              >
+                                ♥
+                              </button>
+                            )}
+
+                            {/* Kebab Menu Trigger */}
+                            {!addingToPlaylistName && (
+                              <button 
+                                className="ao-kebab" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setKebabMenu({ uid: t.uid, x: rect.left, y: rect.top, track: t });
+                                }}
+                              >
+                                ⋮
+                              </button>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
@@ -757,15 +861,45 @@ export default function App() {
                     {Object.keys(userPlaylists).map(pName => (
                       <div key={pName} className="playlist-card">
                         <div className="pc-header">
-                          <div className="pc-title">{pName}</div>
-                          <div className="pc-actions">
-                            <button className="pc-play" onClick={() => handlePlayPlaylist(pName)} title="Play Playlist">▶</button>
-                            <button className="pc-del" onClick={() => deletePlaylist(pName)} title="Delete Playlist">✕</button>
-                          </div>
+                          {editingPlaylistName === pName ? (
+                            <div className="pc-rename-wrap" onClick={e => e.stopPropagation()}>
+                              <input 
+                                type="text"
+                                className="pc-rename-input"
+                                value={editNameInput}
+                                onChange={e => setEditNameInput(e.target.value)}
+                                autoFocus
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') handleSaveRename(pName)
+                                  if (e.key === 'Escape') setEditingPlaylistName(null)
+                                }}
+                              />
+                              <button className="pc-rename-btn save" onClick={() => handleSaveRename(pName)} title="Save name">✓</button>
+                              <button className="pc-rename-btn cancel" onClick={() => setEditingPlaylistName(null)} title="Cancel">✕</button>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="pc-title">{pName}</div>
+                              <div className="pc-actions">
+                                <button className="pc-play" onClick={() => handlePlayPlaylist(pName)} title="Play Playlist">▶</button>
+                                <button 
+                                  className="pc-kebab" 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    setPlaylistKebabMenu({ pName, x: rect.left, y: rect.top });
+                                  }}
+                                  title="Playlist Options"
+                                >
+                                  ⋮
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </div>
                         <div className="pc-tracks">
                           {userPlaylists[pName].map((t, idx) => (
-                            <div key={idx} className="pc-track" onClick={(e) => {
+                            <div key={idx} className="pc-track" onClick={() => {
                               setQueue(userPlaylists[pName])
                               loadTrack(idx, true, userPlaylists[pName])
                             }}>
@@ -810,6 +944,12 @@ export default function App() {
               </div>
             )}
 
+            {rightTab === 'playlists' && (
+              <button className="add-btn-mehfil" onClick={() => setShowAddFromMehfilModal(true)}>
+                <span style={{fontSize:18,marginRight:6}}>✦</span>
+                Add from Mehfil
+              </button>
+            )}
 
             <button className="add-btn" onClick={() => {
               setModal(true)
@@ -969,6 +1109,40 @@ export default function App() {
         </>
       )}
 
+      {/* ── PLAYLIST KEBAB DROPDOWN ── */}
+      {playlistKebabMenu && (
+        <>
+          <div className="dropdown-overlay" onClick={() => setPlaylistKebabMenu(null)} />
+          <div 
+            className="kebab-dropdown" 
+            style={{ top: playlistKebabMenu.y + 30, left: playlistKebabMenu.x - 120 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button onClick={() => {
+              setAddingToPlaylistName(playlistKebabMenu.pName)
+              setRightTab('collection')
+              showToast(`Mehfil Mode: Click tracks to add to "${playlistKebabMenu.pName}"`, 0)
+              setPlaylistKebabMenu(null)
+            }}>
+              ＋ Add from Mehfil
+            </button>
+            <button onClick={() => {
+              setEditingPlaylistName(playlistKebabMenu.pName)
+              setEditNameInput(playlistKebabMenu.pName)
+              setPlaylistKebabMenu(null)
+            }}>
+              ✎ Rename Playlist
+            </button>
+            <button className="del" onClick={() => {
+              deletePlaylist(playlistKebabMenu.pName)
+              setPlaylistKebabMenu(null)
+            }}>
+              ✕ Delete Playlist
+            </button>
+          </div>
+        </>
+      )}
+
       {/* ── PLAYLIST MODAL ── */}
       {showPlaylistModal && (
         <div className="modal-overlay" onClick={() => setShowPlaylistModal(null)}>
@@ -1016,110 +1190,416 @@ export default function App() {
         </div>
       )}
 
-      {/* ── SHARE MODAL ── */}
-      {showShareModal && curIdx >= 0 && (
-        <ShareModal 
+      {/* ── SEND A GHAZAL MODAL ── */}
+      {showSendModal && curIdx >= 0 && (
+        <SendModal 
           track={queue[curIdx]} 
-          onClose={() => setShowShareModal(false)} 
+          onClose={() => setShowSendModal(false)} 
+          showToast={showToast} 
         />
       )}
 
-      {/* ── POET BIO PANEL ── */}
-      {selectedPoetBio && (
-        <div className="bio-panel-overlay" onClick={() => setSelectedPoetBio(null)}>
-          <div className="bio-panel" onClick={e => e.stopPropagation()}>
-            <button className="bio-close" onClick={() => setSelectedPoetBio(null)}>✕</button>
-            <div className="bio-urdu">{selectedPoetBio.urduName}</div>
-            <div className="bio-en">{selectedPoetBio.en}</div>
-            <div className="bio-meta">
-              <span>{selectedPoetBio.years}</span>
-              <span className="dot"></span>
-              <span>{selectedPoetBio.city}</span>
+      {/* ── RECEIVED GHAZAL MODAL ── */}
+      {receivedNote && (
+        <div className="modal-overlay" style={{ zIndex: 10000 }}>
+          <div className="modal" style={{ textAlign: 'center', border: '1px solid var(--gold)', boxShadow: '0 0 50px rgba(201,168,76,0.3)', width: '460px', maxWidth: '95vw' }}>
+            <div className="modal-title" style={{ fontFamily: "'Cinzel', serif", color: 'var(--gold)', fontSize: '22px', marginBottom: '8px' }}>
+              A Gift of Melody
             </div>
-            <div className="bio-text">{selectedPoetBio.bio}</div>
-            <div className="bio-footer">— MEHFIL-E-GHAZAL —</div>
+            <div style={{ fontStyle: 'italic', color: 'var(--muted)', fontSize: '10px', letterSpacing: '0.15em', marginBottom: '20px', textTransform: 'uppercase' }}>
+              Someone has sent you a ghazal
+            </div>
+            
+            {receivedNote.text && (
+              <div className="received-note-content" style={{ 
+                background: 'rgba(201, 168, 76, 0.05)', 
+                border: '1px solid rgba(201, 168, 76, 0.15)',
+                borderRadius: '8px',
+                padding: '20px',
+                marginBottom: '24px',
+                fontFamily: "'Amiri', serif",
+                fontSize: '18px',
+                color: 'var(--ivory)',
+                lineHeight: '1.6',
+                fontStyle: 'italic'
+              }}>
+                "{receivedNote.text}"
+              </div>
+            )}
+
+            <div style={{ marginBottom: '30px' }}>
+              <div style={{ color: 'var(--gold)', fontSize: '16px', fontFamily: "'Cinzel', serif", fontWeight: 'bold' }}>
+                {playlist[receivedNote.trackIdx]?.songEn?.toUpperCase()}
+              </div>
+              <div style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '4px', letterSpacing: '0.1em' }}>
+                BY {playlist[receivedNote.trackIdx]?.artistEn?.toUpperCase()}
+              </div>
+            </div>
+
+            <button className="btn-primary" onClick={() => {
+              loadTrack(receivedNote.trackIdx, true, playlist)
+              setTonearmDown(true)
+              setReceivedNote(null)
+              window.history.replaceState({}, document.title, window.location.pathname)
+            }} style={{ padding: '14px 28px', fontSize: '11px', letterSpacing: '0.1em' }}>
+              🎵 LISTEN ON VINYL
+            </button>
           </div>
         </div>
+      )}
+      {/* ── ADD FROM MEHFIL MODAL ── */}
+      {showAddFromMehfilModal && (
+        <AddFromMehfilModal
+          userPlaylists={userPlaylists}
+          setUserPlaylists={setUserPlaylists}
+          setAddingToPlaylistName={setAddingToPlaylistName}
+          setRightTab={setRightTab}
+          onClose={() => setShowAddFromMehfilModal(false)}
+          showToast={showToast}
+        />
       )}
 
     </>
   )
 }
 
-function ShareModal({ track, onClose }) {
-  const canvasRef = useRef(null)
-  const lyrics = GHAZAL_LYRICS[track.id] || { sher: "رنجش ہی سہی، سہی دل ہی دکھانے کے لیے آ\nپھر سے مجھے چھوڑ کر جانے کے لیے آ" }
+function SendModal({ track, onClose, showToast }) {
+  const [note, setNote] = useState('')
+  const [copied, setCopied] = useState(false)
 
-  useEffect(() => {
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext('2d')
-    
-    // Draw background
-    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height)
-    grad.addColorStop(0, '#2a1506')
-    grad.addColorStop(1, '#0e0b07')
-    ctx.fillStyle = grad
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    
-    // Draw texture (optional)
-    ctx.globalAlpha = 0.05
-    ctx.fillStyle = '#c9a84c'
-    for(let i=0; i<100; i++) {
-      ctx.fillRect(Math.random()*canvas.width, Math.random()*canvas.height, 2, 2)
+  const shareUrl = useMemo(() => {
+    const base = `${window.location.origin}${window.location.pathname}`
+    const params = new URLSearchParams()
+    params.set('track', track.uid)
+    if (note.trim()) {
+      params.set('note', note.trim())
     }
-    ctx.globalAlpha = 1.0
+    return `${base}?${params.toString()}`
+  }, [track.uid, note])
 
-    // Draw Gold Border
-    ctx.strokeStyle = '#c9a84c'
-    ctx.lineWidth = 40
-    ctx.strokeRect(0, 0, canvas.width, canvas.height)
-    ctx.lineWidth = 2
-    ctx.strokeRect(60, 60, canvas.width - 120, canvas.height - 120)
-
-    // Draw Urdu Sher
-    ctx.fillStyle = '#f0e6cf'
-    ctx.font = '60px "Amiri", serif'
-    ctx.textAlign = 'center'
-    ctx.direction = 'rtl'
-    const lines = lyrics.sher.split('\n')
-    lines.forEach((line, i) => {
-      ctx.fillText(line, canvas.width / 2, 450 + (i * 100))
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopied(true)
+      showToast('Link copied to clipboard!')
+      setTimeout(() => setCopied(false), 2000)
+    }).catch(err => {
+      console.error('Failed to copy link: ', err)
     })
+  }
 
-    // Draw Artist
-    ctx.fillStyle = '#c9a84c'
-    ctx.font = '40px "Cinzel", serif'
-    ctx.direction = 'ltr'
-    ctx.fillText(track.artistEn.toUpperCase(), canvas.width / 2, 750)
+  const shareWhatsApp = () => {
+    const text = `Suno! I've sent you a beautiful ghazal: "${track.songEn}" by ${track.artistEn} 🎵\n\nListen to it here on the retro vinyl player:\n${shareUrl}`
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank')
+  }
 
-    // Draw Watermark
-    ctx.globalAlpha = 0.3
-    ctx.font = '30px "Cinzel", serif'
-    ctx.fillText("MEHFIL-E-GHAZAL", canvas.width / 2, 1800)
-    ctx.globalAlpha = 1.0
+  const shareTwitter = () => {
+    const text = `Listening to "${track.songEn}" by ${track.artistEn} on Mehfil-e-Ghazal! 🎵`
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`, '_blank')
+  }
 
-  }, [track, lyrics])
+  const shareFacebook = () => {
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')
+  }
 
-  const download = () => {
-    const link = document.createElement('a')
-    link.download = `Mehfil-${track.songEn}.png`
-    link.href = canvasRef.current.toDataURL()
-    link.click()
+  const shareTelegram = () => {
+    const text = `Suno! I've sent you a beautiful ghazal: "${track.songEn}" by ${track.artistEn} 🎵`
+    window.open(`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(text)}`, '_blank')
   }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal share-modal" onClick={e => e.stopPropagation()} style={{ width: '400px', textAlign: 'center' }}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ width: '460px', maxWidth: '95vw', border: '1px solid var(--gold)' }}>
         <button className="modal-x" onClick={onClose}>✕</button>
-        <div className="modal-title">Share a Sher</div>
-        <div className="modal-sub">Preview of your verse card</div>
-        
-        <div className="canvas-wrap" style={{ margin: '20px 0', border: '1px solid #c9a84c', overflow: 'hidden', borderRadius: '8px' }}>
-          <canvas ref={canvasRef} width="1080" height="1920" style={{ width: '100%', height: 'auto', display: 'block' }} />
+        <div className="modal-title" style={{ fontSize: '20px', letterSpacing: '0.05em' }}>SEND A GHAZAL</div>
+        <div className="modal-sub">Share this beautiful melody with someone special</div>
+
+        <div style={{ 
+          background: 'rgba(201, 168, 76, 0.05)', 
+          border: '1px solid rgba(201, 168, 76, 0.15)',
+          borderRadius: '8px', 
+          padding: '12px 16px',
+          marginBottom: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '4px'
+        }}>
+          <span style={{ fontSize: '13px', color: 'var(--gold)', fontWeight: 'bold', fontFamily: "'Cinzel', serif" }}>
+            {track.songEn?.toUpperCase()}
+          </span>
+          <span style={{ fontSize: '10px', color: 'var(--muted)', letterSpacing: '0.1em' }}>
+            BY {track.artistEn?.toUpperCase()}
+          </span>
         </div>
 
-        <button className="btn-primary" onClick={download}>Download as Image</button>
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ display: 'block', fontSize: '10px', letterSpacing: '0.2em', color: 'var(--gold3)', textTransform: 'uppercase', marginBottom: '6px' }}>
+            Personal Note (Optional)
+          </label>
+          <textarea 
+            placeholder="Write a message to send along with the ghazal..." 
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            style={{ 
+              width: '100%', 
+              minHeight: '80px', 
+              background: 'rgba(201,168,76,0.05)', 
+              border: '1px solid var(--border)', 
+              borderRadius: '6px', 
+              padding: '11px 13px', 
+              color: 'var(--ivory)', 
+              fontFamily: "'Amiri', serif", 
+              fontSize: '16px', 
+              outline: 'none', 
+              resize: 'none',
+              transition: 'border-color 0.2s'
+            }}
+            onFocus={e => e.target.style.borderColor = 'var(--gold)'}
+            onBlur={e => e.target.style.borderColor = 'var(--border)'}
+          />
+        </div>
+
+        <div style={{ marginBottom: '24px' }}>
+          <label style={{ display: 'block', fontSize: '10px', letterSpacing: '0.2em', color: 'var(--gold3)', textTransform: 'uppercase', marginBottom: '6px' }}>
+            Share Link
+          </label>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input 
+              type="text" 
+              readOnly 
+              value={shareUrl} 
+              style={{ 
+                flex: 1, 
+                background: 'rgba(0,0,0,0.3)', 
+                border: '1px solid var(--border)', 
+                borderRadius: '6px', 
+                padding: '10px 12px', 
+                color: 'var(--muted)', 
+                fontSize: '11px', 
+                margin: 0,
+                outline: 'none',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }} 
+            />
+            <button 
+              onClick={copyToClipboard}
+              className="btn-primary"
+              style={{ 
+                padding: '10px 16px', 
+                fontSize: '11px', 
+                letterSpacing: '0.1em',
+                flexShrink: 0,
+                background: copied ? '#2e7d32' : 'var(--gold)',
+                color: copied ? '#fff' : '#0e0b07'
+              }}
+            >
+              {copied ? 'COPIED!' : 'COPY'}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: '10px', letterSpacing: '0.2em', color: 'var(--gold3)', textTransform: 'uppercase', marginBottom: '10px', textAlign: 'center' }}>
+            Or Share Directly Via
+          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <button 
+              onClick={shareWhatsApp}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                padding: '12px',
+                background: 'rgba(37, 211, 102, 0.1)',
+                border: '1px solid rgba(37, 211, 102, 0.3)',
+                borderRadius: '6px',
+                color: '#25D366',
+                fontFamily: "'Cinzel', serif",
+                fontSize: '10px',
+                letterSpacing: '0.05em',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(37, 211, 102, 0.2)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(37, 211, 102, 0.1)'}
+            >
+              🟢 WhatsApp
+            </button>
+            <button 
+              onClick={shareTwitter}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                padding: '12px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: '6px',
+                color: '#fff',
+                fontFamily: "'Cinzel', serif",
+                fontSize: '10px',
+                letterSpacing: '0.05em',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
+            >
+              ⚫ Twitter (X)
+            </button>
+            <button 
+              onClick={shareFacebook}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                padding: '12px',
+                background: 'rgba(24, 119, 242, 0.1)',
+                border: '1px solid rgba(24, 119, 242, 0.3)',
+                borderRadius: '6px',
+                color: '#1877F2',
+                fontFamily: "'Cinzel', serif",
+                fontSize: '10px',
+                letterSpacing: '0.05em',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(24, 119, 242, 0.2)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(24, 119, 242, 0.1)'}
+            >
+              🔵 Facebook
+            </button>
+            <button 
+              onClick={shareTelegram}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                padding: '12px',
+                background: 'rgba(0, 136, 204, 0.1)',
+                border: '1px solid rgba(0, 136, 204, 0.3)',
+                borderRadius: '6px',
+                color: '#0088cc',
+                fontFamily: "'Cinzel', serif",
+                fontSize: '10px',
+                letterSpacing: '0.05em',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(0, 136, 204, 0.2)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(0, 136, 204, 0.1)'}
+            >
+              🔵 Telegram
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
+
+function AddFromMehfilModal({ userPlaylists, setUserPlaylists, setAddingToPlaylistName, setRightTab, onClose, showToast }) {
+  const [newPlaylistName, setNewPlaylistName] = useState('')
+  
+  const handleSelect = (pName) => {
+    setAddingToPlaylistName(pName)
+    setRightTab('collection')
+    showToast(`Mehfil Mode: Click tracks to add to "${pName}"`, 0)
+    onClose()
+  }
+
+  const handleCreate = () => {
+    const trimmed = newPlaylistName.trim()
+    if (!trimmed) return
+    if (userPlaylists[trimmed]) {
+      showToast('A playlist with that name already exists')
+      return
+    }
+    setUserPlaylists(prev => ({ ...prev, [trimmed]: [] }))
+    setAddingToPlaylistName(trimmed)
+    setRightTab('collection')
+    showToast(`Mehfil Mode: Click tracks to add to "${trimmed}"`, 0)
+    onClose()
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ border: '1px solid var(--gold)' }}>
+        <button className="modal-x" onClick={onClose}>✕</button>
+        <div className="modal-title" style={{ fontSize: '20px', letterSpacing: '0.05em' }}>ADD FROM MEHFIL</div>
+        <div className="modal-sub">Choose a playlist or create a new one to add songs from collection</div>
+
+        {Object.keys(userPlaylists).length > 0 && (
+          <>
+            <label style={{ display: 'block', fontSize: '10px', letterSpacing: '0.2em', color: 'var(--gold3)', textTransform: 'uppercase', marginBottom: '8px' }}>
+              Select Existing Playlist
+            </label>
+            <div className="playlist-list" style={{ marginBottom: '20px' }}>
+              {Object.keys(userPlaylists).map(name => (
+                <button 
+                  key={name} 
+                  className="playlist-item"
+                  onClick={() => handleSelect(name)}
+                >
+                  {name} <span>({userPlaylists[name].length} tracks)</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ margin: '16px 0', textAlign: 'center', opacity: 0.3, letterSpacing: '0.1em' }}>— OR —</div>
+          </>
+        )}
+
+        <div style={{ marginBottom: '24px' }}>
+          <label style={{ display: 'block', fontSize: '10px', letterSpacing: '0.2em', color: 'var(--gold3)', textTransform: 'uppercase', marginBottom: '8px' }}>
+            Create New Playlist
+          </label>
+          <input 
+            type="text" 
+            placeholder="Enter new playlist name..." 
+            value={newPlaylistName}
+            onChange={e => setNewPlaylistName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && newPlaylistName.trim()) {
+                handleCreate()
+              }
+            }}
+            style={{
+              width: '100%',
+              background: 'rgba(201,168,76,0.05)',
+              border: '1px solid var(--border)',
+              borderRadius: '6px',
+              padding: '11px 13px',
+              color: 'var(--ivory)',
+              fontSize: '13px',
+              outline: 'none',
+              marginBottom: 0
+            }}
+          />
+        </div>
+
+        <div className="modal-actions">
+          <button 
+            className="btn-primary" 
+            onClick={handleCreate}
+            disabled={!newPlaylistName.trim()}
+            style={{ padding: '12px', fontSize: '11px', letterSpacing: '0.15em' }}
+          >
+            Create & Add
+          </button>
+          <button 
+            className="btn-sec" 
+            onClick={onClose}
+            style={{ padding: '12px 20px', fontSize: '11px' }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
