@@ -671,11 +671,11 @@ export default function App() {
 
                 {/* Controls */}
                 <div className="controls">
-                  <button className={`ctrl-sm ${shuffle?'on':''}`} onClick={() => { setShuffle(s=>!s); showToast(shuffle?'Shuffle off':'Shuffle on') }}>⇌ SHUFFLE</button>
-                  <button className="ctrl-btn" onClick={prevTrack}>&lt;&lt;</button>
-                  <button className="play-btn" onClick={togglePlay}>{playing ? 'PAUSE' : 'PLAY'}</button>
-                  <button className="ctrl-btn" onClick={nextTrack}>&gt;&gt;</button>
-                  <button className={`ctrl-sm ${repeat?'on':''}`} onClick={() => { setRepeat(r=>!r); showToast(repeat?'Repeat off':'Repeat on') }}>↺ REPEAT</button>
+                  <button className={`ctrl-sm ${shuffle?'on':''}`} onClick={() => { setShuffle(s=>!s); showToast(shuffle?'Shuffle off':'Shuffle on') }}>≪ SHUFFLE</button>
+                  <button className="ctrl-btn" onClick={prevTrack}>◄◄</button>
+                  <button className="play-btn" onClick={togglePlay}>{playing ? '❚❚' : '▶'}</button>
+                  <button className="ctrl-btn" onClick={nextTrack}>►►</button>
+                  <button className={`ctrl-sm ${repeat?'on':''}`} onClick={() => { setRepeat(r=>!r); showToast(repeat?'Repeat off':'Repeat on') }}>REPEAT ≫</button>
                 </div>
 
                 {/* Progress */}
