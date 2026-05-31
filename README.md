@@ -1,10 +1,10 @@
-# Mehfil-e-Ghazal (Ghazalpaglu) - Retro Vinyl Ghazal Player
+# Mehfil-e-Ghazal - Retro Vinyl Ghazal Player
 
 A beautifully designed, premium web application for exploring and listening to classic Ghazal music. Mehfil-e-Ghazal combines nostalgic vinyl record player aesthetics, warm dark-gold textures, and modern web tech to create an immersive, tactile listening experience for classical Urdu poetry and ghazal lovers.
 
 ---
 
-## 🎨 Premium Aesthetics & UI
+## Premium Aesthetics & UI
 
 *   **Interactive Platter & Tonearm**: Click the golden arm to place the needle and play/pause the rotating vinyl record.
 *   **Visualizer Rings**: Glow and pulse dynamically when music is playing.
@@ -13,7 +13,7 @@ A beautifully designed, premium web application for exploring and listening to c
 
 ---
 
-## 🌟 Modern Features
+## Modern Features
 
 ### 1. Custom Playlist Management
 *   **Stackable Action Controls**: Located at the bottom of the Playlists tab:
@@ -37,7 +37,7 @@ A beautifully designed, premium web application for exploring and listening to c
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 *   **Core**: React 19 + JavaScript ES6
 *   **Build Tool**: Vite
@@ -47,7 +47,7 @@ A beautifully designed, premium web application for exploring and listening to c
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 *   Node.js (v18 or higher)
@@ -82,7 +82,7 @@ The application will run locally at `http://localhost:5173/`.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 src/
@@ -105,7 +105,7 @@ src/
 
 ---
 
-## 📖 How to Listen
+## How to Listen
 
 1.  Select the **Collection** tab and click any artist pack (cubby) to view their vinyl records.
 2.  Click on a vinyl record to glide it onto the platter.
@@ -114,4 +114,4 @@ src/
 
 ---
 
-Made with love for lovers of Urdu poetry, retro audio, and timeless melodies. 🎵
+Made with love for lovers of Urdu poetry, retro audio, and timeless melodies. 

@@ -274,7 +274,7 @@ export default function App() {
           setTimeout(() => {
             loadTrack(idx, true, playlistRef.current)
             setTonearmDown(true)
-            showToast('Playing shared ghazal! 🎵')
+            showToast('Playing shared ghazal!')
           }, 1500)
         }
       }
@@ -704,7 +704,7 @@ export default function App() {
                   disabled={curIdx < 0}
                   style={{ width: '100%', padding: '12px 18px', fontSize: '12px', fontWeight: 'bold' }}
                 >
-                  ✉ SEND A GHAZAL
+                  SEND A GHAZAL
                 </button>
               </div>
 
@@ -1242,7 +1242,7 @@ export default function App() {
               setReceivedNote(null)
               window.history.replaceState({}, document.title, window.location.pathname)
             }} style={{ padding: '14px 28px', fontSize: '11px', letterSpacing: '0.1em' }}>
-              🎵 LISTEN ON VINYL
+              LISTEN ON VINYL
             </button>
           </div>
         </div>
@@ -1288,12 +1288,12 @@ function SendModal({ track, onClose, showToast }) {
   }
 
   const shareWhatsApp = () => {
-    const text = `Suno! I've sent you a beautiful ghazal: "${track.songEn}" by ${track.artistEn} 🎵\n\nListen to it here on the retro vinyl player:\n${shareUrl}`
+    const text = `Suno! I've sent you a beautiful ghazal: "${track.songEn}" by ${track.artistEn}\n\nListen to it here on the retro vinyl player:\n${shareUrl}`
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank')
   }
 
   const shareTwitter = () => {
-    const text = `Listening to "${track.songEn}" by ${track.artistEn} on Mehfil-e-Ghazal! 🎵`
+    const text = `Listening to "${track.songEn}" by ${track.artistEn} on Mehfil-e-Ghazal!`
     window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`, '_blank')
   }
 
@@ -1302,7 +1302,7 @@ function SendModal({ track, onClose, showToast }) {
   }
 
   const shareTelegram = () => {
-    const text = `Suno! I've sent you a beautiful ghazal: "${track.songEn}" by ${track.artistEn} 🎵`
+    const text = `Suno! I've sent you a beautiful ghazal: "${track.songEn}" by ${track.artistEn}`
     window.open(`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(text)}`, '_blank')
   }
 
@@ -1424,7 +1424,7 @@ function SendModal({ track, onClose, showToast }) {
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(37, 211, 102, 0.2)'}
               onMouseLeave={e => e.currentTarget.style.background = 'rgba(37, 211, 102, 0.1)'}
             >
-              🟢 WhatsApp
+              WhatsApp
             </button>
             <button 
               onClick={shareTwitter}
@@ -1447,7 +1447,7 @@ function SendModal({ track, onClose, showToast }) {
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'}
               onMouseLeave={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
             >
-              ⚫ Twitter (X)
+              Twitter (X)
             </button>
             <button 
               onClick={shareFacebook}
@@ -1470,7 +1470,7 @@ function SendModal({ track, onClose, showToast }) {
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(24, 119, 242, 0.2)'}
               onMouseLeave={e => e.currentTarget.style.background = 'rgba(24, 119, 242, 0.1)'}
             >
-              🔵 Facebook
+              Facebook
             </button>
             <button 
               onClick={shareTelegram}
@@ -1493,7 +1493,7 @@ function SendModal({ track, onClose, showToast }) {
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(0, 136, 204, 0.2)'}
               onMouseLeave={e => e.currentTarget.style.background = 'rgba(0, 136, 204, 0.1)'}
             >
-              🔵 Telegram
+              Telegram
             </button>
           </div>
         </div>
