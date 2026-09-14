@@ -173,6 +173,15 @@ export default function App() {
     }
   }, [userPlaylists, sessionId])
 
+  /* ── TOAST ── */
+  const showToast = useCallback((msg, duration = 2800) => {
+    setToast(msg); setToastOn(true)
+    clearTimeout(toastTimer.current)
+    if (duration > 0) {
+      toastTimer.current = setTimeout(() => setToastOn(false), duration)
+    }
+  }, [])
+
   const handleStartFreshSession = useCallback(() => {
     const newSid = 'm_' + Math.random().toString(36).substring(2, 8)
     try {
@@ -202,25 +211,6 @@ export default function App() {
       })
     } catch(e) {}
   }, [sessionId, showToast])
-
-  useEffect(() => {
-    localStorage.setItem('ghazalpaglu_favorites', JSON.stringify(favorites))
-  }, [favorites])
-
-  useEffect(() => {
-    if (tonearmDown && toast === 'Click the golden tonearm to play.') {
-      setToastOn(false)
-    }
-  }, [tonearmDown, toast])
-
-  /* ── TOAST ── */
-  const showToast = useCallback((msg, duration = 2800) => {
-    setToast(msg); setToastOn(true)
-    clearTimeout(toastTimer.current)
-    if (duration > 0) {
-      toastTimer.current = setTimeout(() => setToastOn(false), duration)
-    }
-  }, [])
 
   const toggleFavorite = useCallback((trackUid) => {
     setFavorites(prev => {
