@@ -723,13 +723,19 @@ export default function App() {
               </button>
               <button 
                 className={`rt-tab ${rightTab === 'playlists' ? 'active' : ''}`}
-                onClick={() => setRightTab('playlists')}
+                onClick={() => {
+                  if (addingToPlaylistName) setAddingToPlaylistName(null)
+                  setRightTab('playlists')
+                }}
               >
                 Playlists
               </button>
               <button 
                 className={`rt-tab ${rightTab === 'favorites' ? 'active' : ''}`}
-                onClick={() => setRightTab('favorites')}
+                onClick={() => {
+                  if (addingToPlaylistName) setAddingToPlaylistName(null)
+                  setRightTab('favorites')
+                }}
               >
                 Favorites
               </button>
@@ -751,12 +757,12 @@ export default function App() {
               <div className="wooden-shelf-wrapper">
                 {addingToPlaylistName && (
                   <div className="add-mode-banner">
-                    <span>Adding tracks to <strong>{addingToPlaylistName}</strong></span>
+                    <span className="amb-text">✦ Adding tracks to <strong>"{addingToPlaylistName}"</strong></span>
                     <button className="add-mode-done" onClick={() => {
-                      setAddingToPlaylistName(null)
-                      setRightTab('playlists')
-                      showToast(`Saved playlist "${addingToPlaylistName}"!`)
-                    }}>Done</button>
+                      const pName = addingToPlaylistName;
+                      setAddingToPlaylistName(null);
+                      showToast(`Finished adding to "${pName}". Click tracks to play!`, 2500);
+                    }}>✓ Stop & Exit Add Mode</button>
                   </div>
                 )}
                 <div className="wooden-shelf">
@@ -785,6 +791,18 @@ export default function App() {
                         <div className="ao-title" style={{fontFamily: "'Cinzel', serif", letterSpacing: '0.05em', fontSize: 26}}>{activeArtist.en.toUpperCase()}</div>
                         <button className="ao-close" onClick={() => { setActiveArtist(null); setArtistSearch('') }}>✕</button>
                       </div>
+
+                      {addingToPlaylistName && (
+                        <div className="add-mode-banner">
+                          <span className="amb-text">✦ Adding tracks to <strong>"{addingToPlaylistName}"</strong></span>
+                          <button className="add-mode-done" onClick={() => {
+                            const pName = addingToPlaylistName;
+                            setAddingToPlaylistName(null);
+                            showToast(`Finished adding to "${pName}". Click tracks to play!`, 2500);
+                          }}>✓ Stop & Exit Add Mode</button>
+                        </div>
+                      )}
+
                       <input 
                         className="ao-search"
                         placeholder={`Search ${activeArtist.en}'s tracks...`}
@@ -806,7 +824,7 @@ export default function App() {
                                 handleTrackSelect(e, t.globalIdx)
                               }
                             }} 
-                            title={addingToPlaylistName ? "Click to add/remove from playlist" : "Click to load"}
+                            title={addingToPlaylistName ? "Click to add/remove from playlist" : "Click to load on vinyl player"}
                           >
                             <div className="rv-inner" style={{background: t.color || '#1a1208'}}>
                               <div className="rv-en" style={{marginTop: 0, fontSize: 8}}>{t.artistEn?.split(' ')[0]}</div>
@@ -819,6 +837,20 @@ export default function App() {
                               <div className="add-mode-checkmark">✓</div>
                             )}
                             
+                            {/* Quick Play button in Add Mode */}
+                            {addingToPlaylistName && (
+                              <button 
+                                className="ao-quick-play" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTrackSelect(e, t.globalIdx);
+                                }}
+                                title="Play on vinyl player"
+                              >
+                                ▶
+                              </button>
+                            )}
+
                             {/* Heart Icon */}
                             {!addingToPlaylistName && (
                               <button 
