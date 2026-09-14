@@ -6,7 +6,28 @@ const COLORS = ['#3d0b15','#162a18','#2a1506','#0d1e2a','#0d2520','#1e0a2e','#2a
 const fmt = s => { const m=Math.floor(s/60),sec=Math.floor(s%60); return `${m}:${sec<10?'0':''}${sec}` }
 const getYtId = url => { const m=url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/); return m?m[1]:(/^[a-zA-Z0-9_-]{11}$/.test(url.trim())?url.trim():null) }
 
+const getInitialSessionId = () => {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    let sid = params.get('session')
+    if (sid) {
+      sessionStorage.setItem('ghazalpaglu_session_id', sid)
+      return sid
+    }
+    sid = sessionStorage.getItem('ghazalpaglu_session_id')
+    if (!sid) {
+      sid = 'm_' + Math.random().toString(36).substring(2, 8)
+      sessionStorage.setItem('ghazalpaglu_session_id', sid)
+    }
+    return sid
+  } catch (e) {
+    return 'm_default'
+  }
+}
+
 export default function App() {
+  const [sessionId, setSessionId] = useState(getInitialSessionId)
+
   const [playlist, setPlaylist]   = useState(() => {
     const saved = localStorage.getItem('ghazalpaglu_custom')
     const initial = INITIAL_PLAYLIST.map((t, i) => ({ ...t, uid: `core-${i}` }))
@@ -23,8 +44,13 @@ export default function App() {
     return initial
   })
   const [userPlaylists, setUserPlaylists] = useState(() => {
-    const saved = localStorage.getItem('ghazalpaglu_playlists')
-    return saved ? JSON.parse(saved) : {}
+    try {
+      const sid = getInitialSessionId()
+      const saved = localStorage.getItem(`ghazalpaglu_playlists_${sid}`)
+      return saved ? JSON.parse(saved) : {}
+    } catch (e) {
+      return {}
+    }
   })
   const [kebabMenu, setKebabMenu] = useState(null) // { uid, x, y }
   const [queue, setQueue]         = useState(playlist)
@@ -142,8 +168,40 @@ export default function App() {
 
 
   useEffect(() => {
-    localStorage.setItem('ghazalpaglu_playlists', JSON.stringify(userPlaylists))
-  }, [userPlaylists])
+    if (sessionId) {
+      localStorage.setItem(`ghazalpaglu_playlists_${sessionId}`, JSON.stringify(userPlaylists))
+    }
+  }, [userPlaylists, sessionId])
+
+  const handleStartFreshSession = useCallback(() => {
+    const newSid = 'm_' + Math.random().toString(36).substring(2, 8)
+    try {
+      sessionStorage.setItem('ghazalpaglu_session_id', newSid)
+    } catch(e) {}
+    setSessionId(newSid)
+    setUserPlaylists({})
+    if (addingToPlaylistName) setAddingToPlaylistName(null)
+    
+    try {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('session')
+      window.history.replaceState({}, '', url.toString())
+    } catch(e) {}
+    
+    showToast('✦ Started a fresh, empty Mehfil session!', 3000)
+  }, [addingToPlaylistName, showToast])
+
+  const handleShareSession = useCallback(() => {
+    try {
+      const url = new URL(window.location.href)
+      url.searchParams.set('session', sessionId)
+      navigator.clipboard.writeText(url.toString()).then(() => {
+        showToast('Session link copied! Shared users can view your playlist.', 3500)
+      }).catch(() => {
+        showToast(`Share session URL: ?session=${sessionId}`, 4000)
+      })
+    } catch(e) {}
+  }, [sessionId, showToast])
 
   useEffect(() => {
     localStorage.setItem('ghazalpaglu_favorites', JSON.stringify(favorites))
@@ -756,13 +814,25 @@ export default function App() {
             {rightTab === 'collection' ? (
               <div className="wooden-shelf-wrapper">
                 {addingToPlaylistName && (
-                  <div className="add-mode-banner">
-                    <span className="amb-text">✦ Adding tracks to <strong>"{addingToPlaylistName}"</strong></span>
-                    <button className="add-mode-done" onClick={() => {
-                      const pName = addingToPlaylistName;
-                      setAddingToPlaylistName(null);
-                      showToast(`Finished adding to "${pName}". Click tracks to play!`, 2500);
-                    }}>✓ Stop & Exit Add Mode</button>
+                  <div className="add-mode-banner mehfil-ledger-theme">
+                    <div className="ledger-decor-top">
+                      <span className="ledger-ornament">❖</span>
+                      <span className="ledger-title-urdu">محفلِ بیاض</span>
+                      <span className="ledger-title-en">MEHFIL LEDGER</span>
+                      <span className="ledger-ornament">❖</span>
+                    </div>
+                    <div className="ledger-body">
+                      <div className="amb-text">
+                        <span>Adding ghazals to</span> <strong className="ledger-pname">"{addingToPlaylistName}"</strong>
+                      </div>
+                      <button className="add-mode-done ledger-seal-btn" onClick={() => {
+                        const pName = addingToPlaylistName;
+                        setAddingToPlaylistName(null);
+                        showToast(`✦ Mehfil Ledger Closed for "${pName}". Click tracks to play!`, 2800);
+                      }}>
+                        <span className="seal-icon">✦</span> FINISH LEDGER & CLOSE
+                      </button>
+                    </div>
                   </div>
                 )}
                 <div className="wooden-shelf">
@@ -793,13 +863,25 @@ export default function App() {
                       </div>
 
                       {addingToPlaylistName && (
-                        <div className="add-mode-banner">
-                          <span className="amb-text">✦ Adding tracks to <strong>"{addingToPlaylistName}"</strong></span>
-                          <button className="add-mode-done" onClick={() => {
-                            const pName = addingToPlaylistName;
-                            setAddingToPlaylistName(null);
-                            showToast(`Finished adding to "${pName}". Click tracks to play!`, 2500);
-                          }}>✓ Stop & Exit Add Mode</button>
+                        <div className="add-mode-banner mehfil-ledger-theme">
+                          <div className="ledger-decor-top">
+                            <span className="ledger-ornament">❖</span>
+                            <span className="ledger-title-urdu">محفلِ بیاض</span>
+                            <span className="ledger-title-en">MEHFIL LEDGER</span>
+                            <span className="ledger-ornament">❖</span>
+                          </div>
+                          <div className="ledger-body">
+                            <div className="amb-text">
+                              <span>Adding ghazals to</span> <strong className="ledger-pname">"{addingToPlaylistName}"</strong>
+                            </div>
+                            <button className="add-mode-done ledger-seal-btn" onClick={() => {
+                              const pName = addingToPlaylistName;
+                              setAddingToPlaylistName(null);
+                              showToast(`✦ Mehfil Ledger Closed for "${pName}". Click tracks to play!`, 2800);
+                            }}>
+                              <span className="seal-icon">✦</span> FINISH LEDGER & CLOSE
+                            </button>
+                          </div>
                         </div>
                       )}
 
@@ -883,6 +965,22 @@ export default function App() {
               </div>
             ) : rightTab === 'playlists' ? (
               <div className="playlists-view">
+                {/* ── SESSION ISOLATION BAR ── */}
+                <div className="session-bar">
+                  <div className="sb-info">
+                    <span className="sb-dot">●</span>
+                    <span className="sb-label">MEHFIL SESSION:</span>
+                    <span className="sb-id">#{sessionId}</span>
+                  </div>
+                  <div className="sb-actions">
+                    <button className="sb-btn fresh" onClick={handleStartFreshSession} title="Start a brand new empty playlist session">
+                      ✦ Start Fresh Session
+                    </button>
+                    <button className="sb-btn share" onClick={handleShareSession} title="Share session link">
+                      🔗 Share Session
+                    </button>
+                  </div>
+                </div>
                 {/* ... existing playlists view ... */}
                 {Object.keys(userPlaylists).length === 0 ? (
                   <div className="empty-state">
