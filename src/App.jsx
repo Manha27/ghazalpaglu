@@ -29,17 +29,18 @@ export default function App() {
   const [sessionId, setSessionId] = useState(getInitialSessionId)
 
   const [playlist, setPlaylist]   = useState(() => {
-    const saved = localStorage.getItem('ghazalpaglu_custom')
     const initial = INITIAL_PLAYLIST.map((t, i) => ({ ...t, uid: `core-${i}` }))
-    if (saved) {
-      try { 
-         const custom = JSON.parse(saved)
-         const customWithUids = Array.isArray(custom) 
-            ? custom.map((t, i) => ({ ...t, uid: t.uid || `custom-old-${Date.now()}-${i}` }))
-            : []
-         return [...initial, ...customWithUids]
-      } catch (e) { console.error(e) }
-    }
+    try {
+      const sid = getInitialSessionId()
+      const saved = localStorage.getItem(`ghazalpaglu_custom_${sid}`)
+      if (saved) {
+        const custom = JSON.parse(saved)
+        const customWithUids = Array.isArray(custom) 
+           ? custom.map((t, i) => ({ ...t, uid: t.uid || `custom-old-${Date.now()}-${i}` }))
+           : []
+        return [...initial, ...customWithUids]
+      }
+    } catch (e) { console.error(e) }
 
     return initial
   })
@@ -82,8 +83,13 @@ export default function App() {
   const [artistSearch, setArtistSearch] = useState('')
   const [globalSearch, setGlobalSearch] = useState('')
   const [favorites, setFavorites] = useState(() => {
-    const saved = localStorage.getItem('ghazalpaglu_favorites')
-    return saved ? JSON.parse(saved) : []
+    try {
+      const sid = getInitialSessionId()
+      const saved = localStorage.getItem(`ghazalpaglu_favorites_${sid}`)
+      return saved ? JSON.parse(saved) : []
+    } catch(e) {
+      return []
+    }
   })
   const [showSendModal, setShowSendModal] = useState(false)
   const [receivedNote, setReceivedNote] = useState(null)
@@ -162,9 +168,11 @@ export default function App() {
   useEffect(() => { tonearmDownRef.current = tonearmDown }, [tonearmDown])
   
   useEffect(() => {
-    const custom = playlist.filter(t => t.uid && typeof t.uid === 'string' && t.uid.startsWith('custom-'))
-    localStorage.setItem('ghazalpaglu_custom', JSON.stringify(custom))
-  }, [playlist])
+    if (sessionId) {
+      const custom = playlist.filter(t => t.uid && typeof t.uid === 'string' && t.uid.startsWith('custom-'))
+      localStorage.setItem(`ghazalpaglu_custom_${sessionId}`, JSON.stringify(custom))
+    }
+  }, [playlist, sessionId])
 
 
   useEffect(() => {
@@ -172,6 +180,12 @@ export default function App() {
       localStorage.setItem(`ghazalpaglu_playlists_${sessionId}`, JSON.stringify(userPlaylists))
     }
   }, [userPlaylists, sessionId])
+
+  useEffect(() => {
+    if (sessionId) {
+      localStorage.setItem(`ghazalpaglu_favorites_${sessionId}`, JSON.stringify(favorites))
+    }
+  }, [favorites, sessionId])
 
   /* ── TOAST ── */
   const showToast = useCallback((msg, duration = 2800) => {
@@ -189,6 +203,8 @@ export default function App() {
     } catch(e) {}
     setSessionId(newSid)
     setUserPlaylists({})
+    setFavorites([])
+    setPlaylist(INITIAL_PLAYLIST.map((t, i) => ({ ...t, uid: `core-${i}` })))
     if (addingToPlaylistName) setAddingToPlaylistName(null)
     
     try {
@@ -197,7 +213,7 @@ export default function App() {
       window.history.replaceState({}, '', url.toString())
     } catch(e) {}
     
-    showToast('✦ Started a fresh, empty Mehfil session!', 3000)
+    showToast('✦ Started a fresh, personalized Mehfil session!', 3000)
   }, [addingToPlaylistName, showToast])
 
   const handleShareSession = useCallback(() => {
@@ -205,7 +221,7 @@ export default function App() {
       const url = new URL(window.location.href)
       url.searchParams.set('session', sessionId)
       navigator.clipboard.writeText(url.toString()).then(() => {
-        showToast('Session link copied! Shared users can view your playlist.', 3500)
+        showToast('Session link copied! Shared users can view your personalized collection.', 3500)
       }).catch(() => {
         showToast(`Share session URL: ?session=${sessionId}`, 4000)
       })
