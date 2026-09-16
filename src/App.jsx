@@ -291,7 +291,7 @@ export default function App() {
             },
             onStateChange: e => {
               const S = window.YT.PlayerState
-              if (e.data === S.PLAYING)   { setPlaying(true);  setStatus(''); setTonearmDown(true) }
+              if (e.data === S.PLAYING)   { setPlaying(true);  setStatus(''); setTonearmDown(true); setToastOn(false) }
               if (e.data === S.PAUSED)    { setPlaying(false); setTonearmDown(false) }
               if (e.data === S.BUFFERING) { setStatus('Buffering...') }
               if (e.data === S.ENDED) {
@@ -518,6 +518,7 @@ export default function App() {
     playClickSound()
     if (!tonearmDown) {
       setTonearmDown(true)
+      setToastOn(false) // dismiss any lingering hint toast
       ytPlayer.current.playVideo()
     } else {
       setTonearmDown(false)
@@ -544,7 +545,7 @@ export default function App() {
        setQueue(playlist)
        loadTrack(globalIdx, false, playlist)
        setGlideAnim(null)
-       showToast('Click the golden tonearm to play.', 0)
+       showToast('Click the golden tonearm to play.', 4000)
     }, 800)
   }
 
