@@ -914,7 +914,7 @@ export default function App() {
               {/* Personal Message Card */}
               {activeReceivedNote && (
                 <div className="np-personal-note">
-                  <div className="np-note-hdr">💌 Message Sent With This Ghazal</div>
+                  <div className="np-note-hdr">Message Sent With This Ghazal</div>
                   <div className="np-note-body">"{activeReceivedNote}"</div>
                 </div>
               )}
