@@ -352,6 +352,48 @@ export default function App() {
     }
   }, [showToast])
 
+  const resolveSharedTrack = useCallback((trackUid, ytid, title, artist) => {
+    // 1. Search current loaded playlist
+    let track = playlistRef.current.find(t => 
+      (trackUid && t.uid === trackUid) || 
+      (trackUid && t.id === trackUid) || 
+      (ytid && t.id === ytid)
+    )
+    if (track) return track
+
+    // 2. If trackUid starts with 'custom-', scan all localStorage keys for matching custom track
+    if (trackUid && trackUid.startsWith('custom-')) {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i)
+          if (key && key.startsWith('ghazalpaglu_custom')) {
+            const raw = localStorage.getItem(key)
+            if (raw) {
+              const list = JSON.parse(raw)
+              if (Array.isArray(list)) {
+                const found = list.find(t => t.uid === trackUid)
+                if (found && found.id) return found
+              }
+            }
+          }
+        }
+      } catch(e) {}
+    }
+
+    // 3. Fallback: Create dynamic track object using YT ID and provided metadata
+    const ytIdToUse = ytid || (trackUid && !trackUid.startsWith('custom-') ? getYtId(trackUid) || trackUid : null)
+    if (!ytIdToUse) return null
+
+    return {
+      uid: trackUid || `shared-${Date.now()}`,
+      id: ytIdToUse,
+      songEn: title || 'Shared Ghazal',
+      artistEn: artist || 'Ghazal Poet',
+      color: '#3d0b15',
+      type: 'yt'
+    }
+  }, [])
+
   // Handle shared track from URL query parameter on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -362,54 +404,42 @@ export default function App() {
     const note = params.get('note')
     
     if (trackUid || ytid) {
-      let currentList = playlistRef.current
-      let idx = currentList.findIndex(t => 
-        (trackUid && t.uid === trackUid) || 
-        (trackUid && t.id === trackUid) || 
-        (ytid && t.id === ytid)
-      )
-      
-      let targetTrack
-      
-      if (idx !== -1) {
-        targetTrack = currentList[idx]
-      } else {
-        const ytIdToUse = ytid || getYtId(trackUid) || trackUid
-        targetTrack = {
-          uid: trackUid || `shared-${Date.now()}`,
-          id: ytIdToUse,
-          songEn: title || 'Shared Ghazal',
-          artistEn: artist || 'Ghazal Poet',
-          color: '#3d0b15',
-          type: 'yt'
+      const resolved = resolveSharedTrack(trackUid, ytid, title, artist)
+      if (resolved) {
+        let currentList = playlistRef.current
+        let idx = currentList.findIndex(t => t.uid === resolved.uid || t.id === resolved.id)
+        
+        if (idx === -1) {
+          setPlaylist(p => [...p, resolved])
+          setQueue(q => [...q, resolved])
+          idx = currentList.length
+          currentList = [...currentList, resolved]
         }
-        setPlaylist(p => [...p, targetTrack])
-        setQueue(q => [...q, targetTrack])
-        idx = currentList.length
-        currentList = [...currentList, targetTrack]
-      }
-      
-      if (note) {
-        setReceivedNote({
-          text: note,
-          track: targetTrack,
-          trackIdx: idx
-        })
-        setActiveReceivedNote(note)
-      }
+        
+        if (note) {
+          setReceivedNote({
+            text: note,
+            track: resolved,
+            trackIdx: idx
+          })
+          setActiveReceivedNote(note)
+        }
 
-      pendingSharedTrackRef.current = { trackIdx: idx, track: targetTrack, forcePlay: true }
-      
-      if (ytReady.current && ytPlayer.current) {
-        loadTrack(idx, true, currentList)
-        setTonearmDown(true)
-        setPlaying(true)
-        showToast(`Playing shared ghazal: "${targetTrack.songEn}"!`, 3500)
+        pendingSharedTrackRef.current = { trackIdx: idx, track: resolved, forcePlay: true }
+        
+        if (ytReady.current && ytPlayer.current && resolved.id) {
+          loadTrack(idx, true, currentList)
+          setTonearmDown(true)
+          setPlaying(true)
+          showToast(`Playing shared ghazal: "${resolved.songEn}"!`, 3500)
+        } else {
+          showToast(`Loading shared ghazal: "${resolved.songEn}"...`, 3000)
+        }
       } else {
-        showToast(`Loading shared ghazal: "${targetTrack.songEn}"...`, 3000)
+        showToast('Shared vinyl track not found', 3000)
       }
     }
-  }, [loadTrack, showToast])
+  }, [loadTrack, showToast, resolveSharedTrack])
 
 
   /* ── NEXT / PREV ── */
@@ -1412,61 +1442,79 @@ export default function App() {
       {/* ── RECEIVED GHAZAL MODAL ── */}
       {receivedNote && (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
-          <div className="modal" style={{ textAlign: 'center', border: '1px solid var(--gold)', boxShadow: '0 0 50px rgba(201,168,76,0.3)', width: '460px', maxWidth: '95vw' }}>
-            <div className="modal-title" style={{ fontFamily: "'Cinzel', serif", color: 'var(--gold)', fontSize: '22px', marginBottom: '8px' }}>
-              A Gift of Melody
-            </div>
-            <div style={{ fontStyle: 'italic', color: 'var(--muted)', fontSize: '10px', letterSpacing: '0.15em', marginBottom: '20px', textTransform: 'uppercase' }}>
-              Someone has sent you a ghazal
-            </div>
+          <div className="modal" style={{ textAlign: 'center', border: '1px solid var(--gold)', boxShadow: '0 0 50px rgba(201,168,76,0.35)', width: '460px', maxWidth: '95vw', padding: '36px 28px' }}>
+            <button className="modal-x" onClick={() => setReceivedNote(null)}>✕</button>
             
+            <div className="modal-title" style={{ fontFamily: "'Cinzel', serif", color: 'var(--gold)', fontSize: '24px', letterSpacing: '0.08em', marginBottom: '22px' }}>
+              A GIFT OF MELODY
+            </div>
+
             {receivedNote.text && (
               <div className="received-note-content" style={{ 
-                background: 'rgba(201, 168, 76, 0.05)', 
-                border: '1px solid rgba(201, 168, 76, 0.15)',
-                borderRadius: '8px',
-                padding: '20px',
+                background: 'linear-gradient(135deg, rgba(201, 168, 76, 0.08), rgba(61, 11, 21, 0.35))', 
+                border: '1px solid rgba(201, 168, 76, 0.3)',
+                borderRadius: '10px',
+                padding: '22px 20px',
                 marginBottom: '24px',
                 fontFamily: "'Amiri', serif",
-                fontSize: '18px',
+                fontSize: '21px',
                 color: 'var(--ivory)',
-                lineHeight: '1.6',
-                fontStyle: 'italic'
+                lineHeight: '1.5',
+                fontStyle: 'italic',
+                wordBreak: 'break-word',
+                boxShadow: 'inset 0 0 15px rgba(0,0,0,0.5)'
               }}>
                 "{receivedNote.text}"
               </div>
             )}
 
-            <div style={{ marginBottom: '30px' }}>
-              <div style={{ color: 'var(--gold)', fontSize: '16px', fontFamily: "'Cinzel', serif", fontWeight: 'bold' }}>
-                {playlist[receivedNote.trackIdx]?.songEn?.toUpperCase()}
+            {receivedNote.track && receivedNote.track.songEn && receivedNote.track.songEn !== 'Shared Ghazal' && (
+              <div style={{ marginBottom: '24px' }}>
+                <div style={{ color: 'var(--gold2)', fontSize: '15px', fontFamily: "'Cinzel', serif", fontWeight: 'bold', letterSpacing: '0.05em' }}>
+                  {receivedNote.track.songEn.toUpperCase()}
+                </div>
+                {receivedNote.track.artistEn && receivedNote.track.artistEn !== 'Ghazal Poet' && (
+                  <div style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '4px', letterSpacing: '0.1em' }}>
+                    BY {receivedNote.track.artistEn.toUpperCase()}
+                  </div>
+                )}
               </div>
-              <div style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '4px', letterSpacing: '0.1em' }}>
-                BY {playlist[receivedNote.trackIdx]?.artistEn?.toUpperCase()}
-              </div>
-            </div>
+            )}
 
             <button className="btn-primary" onClick={() => {
+              const target = receivedNote.track || playlist[receivedNote.trackIdx]
               const idx = receivedNote.trackIdx
+              setActiveReceivedNote(receivedNote.text)
               setReceivedNote(null)
-              if (idx >= 0 && playlist[idx]) {
-                loadTrack(idx, true, playlist)
+
+              if (target) {
+                if (idx >= 0 && playlist[idx]) {
+                  setCurIdx(idx)
+                }
                 setTonearmDown(true)
                 setPlaying(true)
-                if (ytPlayer.current && ytReady.current) {
+                
+                if (ytPlayer.current && ytReady.current && target.id) {
                   try {
-                    ytPlayer.current.loadVideoById(playlist[idx].id)
+                    ytPlayer.current.loadVideoById(target.id)
                     ytPlayer.current.playVideo()
+                    showToast(`Playing "${target.songEn}"!`, 3500)
                   } catch(e) {}
+                } else {
+                  pendingSharedTrackRef.current = { trackIdx: idx >= 0 ? idx : 0, track: target, forcePlay: true }
+                  showToast('Loading vinyl player...', 2500)
                 }
               }
               try {
                 const url = new URL(window.location.href)
                 url.searchParams.delete('track')
                 url.searchParams.delete('note')
+                url.searchParams.delete('title')
+                url.searchParams.delete('artist')
+                url.searchParams.delete('ytid')
                 window.history.replaceState({}, document.title, url.toString())
               } catch(e) {}
-            }} style={{ padding: '14px 28px', fontSize: '11px', letterSpacing: '0.1em' }}>
+            }} style={{ padding: '14px 28px', fontSize: '11px', letterSpacing: '0.12em', width: '100%', fontWeight: 'bold' }}>
               ▶ LISTEN ON VINYL PLAYER
             </button>
           </div>
