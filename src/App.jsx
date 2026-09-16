@@ -148,6 +148,7 @@ export default function App() {
 
   const ytPlayer  = useRef(null)
   const ytReady   = useRef(false)
+  const pendingSharedTrackRef = useRef(null)
   const progTimer = useRef(null)
   const toastTimer= useRef(null)
   const playlistRef = useRef(playlist)
@@ -246,7 +247,29 @@ export default function App() {
           width: 640, height: 360,
           playerVars: { autoplay:0, controls:0, disablekb:1, fs:0, rel:0, modestbranding:1 },
           events: {
-            onReady: () => ytPlayer.current.setVolume(80),
+            onReady: () => {
+              ytPlayer.current.setVolume(80)
+              if (pendingSharedTrackRef.current) {
+                const { trackIdx, forcePlay } = pendingSharedTrackRef.current
+                const q = playlistRef.current
+                if (trackIdx >= 0 && q[trackIdx]) {
+                  const t = q[trackIdx]
+                  setCurIdx(trackIdx)
+                  if (forcePlay) {
+                    try {
+                      ytPlayer.current.loadVideoById(t.id)
+                      ytPlayer.current.playVideo()
+                      setTonearmDown(true)
+                      setPlaying(true)
+                      showToast(`Playing shared ghazal: "${t.songEn}"!`, 3500)
+                    } catch(e) {}
+                  } else {
+                    ytPlayer.current.cueVideoById(t.id)
+                  }
+                  pendingSharedTrackRef.current = null
+                }
+              }
+            },
             onStateChange: e => {
               const S = window.YT.PlayerState
               if (e.data === S.PLAYING)   { setPlaying(true);  setStatus(''); setTonearmDown(true) }
@@ -310,9 +333,18 @@ export default function App() {
     setProgress(0); setTimeCur('0:00'); setTimeDur('0:00')
 
     if (t.type === 'yt') {
-      if (!ytPlayer.current || !ytReady.current) { showToast('Player loading, try again in a moment'); return }
+      if (!ytPlayer.current || !ytReady.current) { 
+        pendingSharedTrackRef.current = { trackIdx: idx, forcePlay: true }
+        showToast('Player loading, will play automatically...', 2000)
+        return 
+      }
       if (forcePlay || tonearmDownRef.current) {
-        ytPlayer.current.loadVideoById(t.id)
+        try {
+          ytPlayer.current.loadVideoById(t.id)
+          ytPlayer.current.playVideo()
+          setTonearmDown(true)
+          setPlaying(true)
+        } catch(e) {}
       } else {
         ytPlayer.current.cueVideoById(t.id)
       }
@@ -333,13 +365,17 @@ export default function App() {
             text: note,
             trackIdx: idx
           })
+        }
+        
+        pendingSharedTrackRef.current = { trackIdx: idx, forcePlay: true }
+        
+        if (ytReady.current && ytPlayer.current) {
+          loadTrack(idx, true, playlistRef.current)
+          setTonearmDown(true)
+          setPlaying(true)
+          showToast(`Playing shared ghazal: "${playlistRef.current[idx]?.songEn}"!`, 3500)
         } else {
-          // No note, just load the track and auto-play
-          setTimeout(() => {
-            loadTrack(idx, true, playlistRef.current)
-            setTonearmDown(true)
-            showToast('Playing shared ghazal!')
-          }, 1500)
+          showToast('Loading shared ghazal...', 2500)
         }
       }
     }
@@ -1373,12 +1409,27 @@ export default function App() {
             </div>
 
             <button className="btn-primary" onClick={() => {
-              loadTrack(receivedNote.trackIdx, true, playlist)
-              setTonearmDown(true)
+              const idx = receivedNote.trackIdx
               setReceivedNote(null)
-              window.history.replaceState({}, document.title, window.location.pathname)
+              if (idx >= 0 && playlist[idx]) {
+                loadTrack(idx, true, playlist)
+                setTonearmDown(true)
+                setPlaying(true)
+                if (ytPlayer.current && ytReady.current) {
+                  try {
+                    ytPlayer.current.loadVideoById(playlist[idx].id)
+                    ytPlayer.current.playVideo()
+                  } catch(e) {}
+                }
+              }
+              try {
+                const url = new URL(window.location.href)
+                url.searchParams.delete('track')
+                url.searchParams.delete('note')
+                window.history.replaceState({}, document.title, url.toString())
+              } catch(e) {}
             }} style={{ padding: '14px 28px', fontSize: '11px', letterSpacing: '0.1em' }}>
-              LISTEN ON VINYL
+              ▶ LISTEN ON VINYL PLAYER
             </button>
           </div>
         </div>
