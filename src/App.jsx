@@ -36,7 +36,20 @@ export default function App() {
       if (saved) {
         const custom = JSON.parse(saved)
         const customWithUids = Array.isArray(custom) 
-           ? custom.map((t, i) => ({ ...t, uid: t.uid || `custom-old-${Date.now()}-${i}` }))
+           ? custom
+               .map((t, i) => {
+                 let artistEn = t.artistEn?.trim()
+                 const songEn = t.songEn?.trim() || ''
+                 if (!artistEn || artistEn === 'Ghazal Poet') {
+                   if (songEn.toLowerCase().includes('aap ko dekh kar')) {
+                     artistEn = 'Jagjit Singh'
+                   } else {
+                     artistEn = 'Jagjit Singh'
+                   }
+                 }
+                 return { ...t, artistEn, uid: t.uid || `custom-old-${Date.now()}-${i}` }
+               })
+               .filter(t => t.artistEn && t.artistEn !== 'Ghazal Poet')
            : []
         return [...initial, ...customWithUids]
       }
@@ -120,6 +133,11 @@ export default function App() {
     })
     return Object.values(map)
   }, [playlist, globalSearch])
+
+  const currentActiveArtist = useMemo(() => {
+    if (!activeArtist) return null
+    return artistsList.find(a => a.en.toLowerCase() === activeArtist.en.toLowerCase()) || activeArtist
+  }, [activeArtist, artistsList])
 
   // form fields
   const [fUrl, setFUrl]       = useState('')
@@ -361,7 +379,11 @@ export default function App() {
     )
     if (track) return track
 
-    // 2. If trackUid starts with 'custom-', scan all localStorage keys for matching custom track
+    // 2. Search INITIAL_PLAYLIST by ytid
+    const initialMatch = INITIAL_PLAYLIST.find(t => ytid && t.id === ytid)
+    if (initialMatch) return initialMatch
+
+    // 3. If trackUid starts with 'custom-', scan all localStorage keys for matching custom track
     if (trackUid && trackUid.startsWith('custom-')) {
       try {
         for (let i = 0; i < localStorage.length; i++) {
@@ -380,16 +402,25 @@ export default function App() {
       } catch(e) {}
     }
 
-    // 3. Fallback: Create dynamic track object using YT ID and provided metadata
+    // 4. Fallback: Create dynamic track object using YT ID and provided metadata
     const ytIdToUse = ytid || (trackUid && !trackUid.startsWith('custom-') ? getYtId(trackUid) || trackUid : null)
     if (!ytIdToUse) return null
+
+    let artistName = (artist && artist.trim() !== 'Ghazal Poet') ? artist.trim() : ''
+    if (!artistName) {
+      if (title && title.toLowerCase().includes('aap ko dekh kar')) {
+        artistName = 'Jagjit Singh'
+      } else {
+        artistName = 'Jagjit Singh'
+      }
+    }
 
     return {
       uid: trackUid || `shared-${Date.now()}`,
       id: ytIdToUse,
       songEn: title || 'Shared Ghazal',
-      artistEn: artist || 'Ghazal Poet',
-      color: '#3d0b15',
+      artistEn: artistName,
+      color: '#162a18',
       type: 'yt'
     }
   }, [])
@@ -600,29 +631,35 @@ export default function App() {
 
   /* ── ADD TRACK ── */
   const handleAdd = () => {
-    if (!fArtist.trim()) { showToast('Select or enter an artist name'); return }
+    const artistNameInput = (fArtistInput || fArtist || '').trim()
+    if (!artistNameInput) { showToast('Select or enter an artist name'); return }
     if (!fSong.trim()) { showToast('Enter a song title'); return }
     
+    const ytId = getYtId(fUrl)
+    if (!ytId) { showToast('Paste a valid YouTube URL'); return }
+
     const color = COLORS[Math.floor(Math.random() * COLORS.length)]
-    let artistName = fArtist.trim()
+    let artistName = artistNameInput
     const songTitle = fSong.trim()
     
     // Case-insensitive artist deduplication
     const existing = existingArtists.find(a => a.toLowerCase() === artistName.toLowerCase())
     if (existing) artistName = existing
 
-    const base = { artistEn: artistName, songEn: songTitle, color, uid: `custom-${Date.now()}` }
-
-    const ytId = getYtId(fUrl)
-    if (!ytId) { showToast('Paste a valid YouTube URL'); return }
+    const newTrack = { 
+      artistEn: artistName, 
+      songEn: songTitle, 
+      color, 
+      uid: `custom-${Date.now()}`, 
+      type: 'yt', 
+      id: ytId 
+    }
     
     setPlaylist(p => {
-      const newTrack = { ...base, type:'yt', id:ytId }
-      
       // Find the LAST occurrence of this artist in the playlist
       let lastArtistIdx = -1
       for (let i = p.length - 1; i >= 0; i--) {
-        if (p[i].artistEn === artistName) {
+        if (p[i].artistEn.toLowerCase() === artistName.toLowerCase()) {
           lastArtistIdx = i
           break
         }
@@ -636,8 +673,24 @@ export default function App() {
       return [...p, newTrack]
     })
 
-    setModal(false); setFUrl(''); setFArtist(''); setFSong('')
-    showToast('Vinyl added to shelf')
+    setQueue(q => {
+      let lastIdx = -1
+      for (let i = q.length - 1; i >= 0; i--) {
+        if (q[i].artistEn?.toLowerCase() === artistName.toLowerCase()) {
+          lastIdx = i
+          break
+        }
+      }
+      if (lastIdx !== -1) {
+        const result = [...q]
+        result.splice(lastIdx + 1, 0, newTrack)
+        return result
+      }
+      return [...q, newTrack]
+    })
+
+    setModal(false); setFUrl(''); setFArtist(''); setFArtistInput(''); setFSong('')
+    showToast(`Vinyl "${songTitle}" added to shelf under ${artistName}!`, 3000)
   }
 
   /* ── DELETE TRACK ── */
@@ -927,8 +980,8 @@ export default function App() {
                   <div className="add-mode-banner mehfil-ledger-theme">
                     <div className="ledger-decor-top">
                       <span className="ledger-ornament">❖</span>
-                      <span className="ledger-title-urdu">محفلِ بیاض</span>
-                      <span className="ledger-title-en">MEHFIL LEDGER</span>
+                      <span className="ledger-title-urdu">فہرستِ غزل</span>
+                      <span className="ledger-title-en">ADDING TO PLAYLIST</span>
                       <span className="ledger-ornament">❖</span>
                     </div>
                     <div className="ledger-body">
@@ -938,9 +991,9 @@ export default function App() {
                       <button className="add-mode-done ledger-seal-btn" onClick={() => {
                         const pName = addingToPlaylistName;
                         setAddingToPlaylistName(null);
-                        showToast(`✦ Mehfil Ledger Closed for "${pName}". Click tracks to play!`, 2800);
+                        showToast(`✦ Done! "${pName}" playlist updated. Click any track to play!`, 2800);
                       }}>
-                        <span className="seal-icon">✦</span> FINISH LEDGER & CLOSE
+                        <span className="seal-icon">✦</span> DONE — BACK TO PLAYING
                       </button>
                     </div>
                   </div>
@@ -964,11 +1017,11 @@ export default function App() {
                 </div>
 
                 {/* Expanded Artist Overlay */}
-                {activeArtist && (
+                {currentActiveArtist && (
                   <div className="artist-overlay">
                     <div className="ao-header" style={{flexDirection: 'column', gap: 10, alignItems: 'stretch'}}>
                       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                        <div className="ao-title" style={{fontFamily: "'Cinzel', serif", letterSpacing: '0.05em', fontSize: 26}}>{activeArtist.en.toUpperCase()}</div>
+                        <div className="ao-title" style={{fontFamily: "'Cinzel', serif", letterSpacing: '0.05em', fontSize: 26}}>{currentActiveArtist.en.toUpperCase()}</div>
                         <button className="ao-close" onClick={() => { setActiveArtist(null); setArtistSearch('') }}>✕</button>
                       </div>
 
@@ -976,8 +1029,8 @@ export default function App() {
                         <div className="add-mode-banner mehfil-ledger-theme">
                           <div className="ledger-decor-top">
                             <span className="ledger-ornament">❖</span>
-                            <span className="ledger-title-urdu">محفلِ بیاض</span>
-                            <span className="ledger-title-en">MEHFIL LEDGER</span>
+                            <span className="ledger-title-urdu">فہرستِ غزل</span>
+                            <span className="ledger-title-en">ADDING TO PLAYLIST</span>
                             <span className="ledger-ornament">❖</span>
                           </div>
                           <div className="ledger-body">
@@ -987,9 +1040,9 @@ export default function App() {
                             <button className="add-mode-done ledger-seal-btn" onClick={() => {
                               const pName = addingToPlaylistName;
                               setAddingToPlaylistName(null);
-                              showToast(`✦ Mehfil Ledger Closed for "${pName}". Click tracks to play!`, 2800);
+                              showToast(`✦ Done! "${pName}" playlist updated. Click any track to play!`, 2800);
                             }}>
-                              <span className="seal-icon">✦</span> FINISH LEDGER & CLOSE
+                              <span className="seal-icon">✦</span> DONE — BACK TO PLAYING
                             </button>
                           </div>
                         </div>
@@ -997,13 +1050,13 @@ export default function App() {
 
                       <input 
                         className="ao-search"
-                        placeholder={`Search ${activeArtist.en}'s tracks...`}
+                        placeholder={`Search ${currentActiveArtist.en}'s tracks...`}
                         value={artistSearch}
                         onChange={e => setArtistSearch(e.target.value)}
                       />
                     </div>
                     <div className="ao-vinyls">
-                      {activeArtist.tracks.filter(t => t.songEn.toLowerCase().includes(artistSearch.toLowerCase())).map((t) => {
+                      {currentActiveArtist.tracks.filter(t => t.songEn.toLowerCase().includes(artistSearch.toLowerCase())).map((t) => {
                         const isSelectedInAddMode = addingToPlaylistName && userPlaylists[addingToPlaylistName]?.some(pt => pt.uid === t.uid);
                         return (
                           <div 
@@ -1361,7 +1414,7 @@ export default function App() {
             <button onClick={() => {
               setAddingToPlaylistName(playlistKebabMenu.pName)
               setRightTab('collection')
-              showToast(`Mehfil Mode: Click tracks to add to "${playlistKebabMenu.pName}"`, 0)
+              showToast(`Tap any track to add it to "${playlistKebabMenu.pName}"`, 0)
               setPlaylistKebabMenu(null)
             }}>
               ＋ Add from Mehfil
@@ -1784,7 +1837,7 @@ function AddFromMehfilModal({ userPlaylists, setUserPlaylists, setAddingToPlayli
   const handleSelect = (pName) => {
     setAddingToPlaylistName(pName)
     setRightTab('collection')
-    showToast(`Mehfil Mode: Click tracks to add to "${pName}"`, 0)
+    showToast(`Tap any track to add it to "${pName}"`, 0)
     onClose()
   }
 
@@ -1798,7 +1851,7 @@ function AddFromMehfilModal({ userPlaylists, setUserPlaylists, setAddingToPlayli
     setUserPlaylists(prev => ({ ...prev, [trimmed]: [] }))
     setAddingToPlaylistName(trimmed)
     setRightTab('collection')
-    showToast(`Mehfil Mode: Click tracks to add to "${trimmed}"`, 0)
+    showToast(`Tap any track to add it to "${trimmed}"`, 0)
     onClose()
   }
 
