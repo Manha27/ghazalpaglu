@@ -93,6 +93,7 @@ export default function App() {
   })
   const [showSendModal, setShowSendModal] = useState(false)
   const [receivedNote, setReceivedNote] = useState(null)
+  const [activeReceivedNote, setActiveReceivedNote] = useState(null)
   const [addingToPlaylistName, setAddingToPlaylistName] = useState(null)
   const [editingPlaylistName, setEditingPlaylistName] = useState(null)
   const [editNameInput, setEditNameInput] = useState('')
@@ -355,28 +356,57 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const trackUid = params.get('track')
+    const ytid = params.get('ytid')
+    const title = params.get('title')
+    const artist = params.get('artist')
     const note = params.get('note')
     
-    if (trackUid) {
-      const idx = playlistRef.current.findIndex(t => t.uid === trackUid)
+    if (trackUid || ytid) {
+      let currentList = playlistRef.current
+      let idx = currentList.findIndex(t => 
+        (trackUid && t.uid === trackUid) || 
+        (trackUid && t.id === trackUid) || 
+        (ytid && t.id === ytid)
+      )
+      
+      let targetTrack
+      
       if (idx !== -1) {
-        if (note) {
-          setReceivedNote({
-            text: note,
-            trackIdx: idx
-          })
+        targetTrack = currentList[idx]
+      } else {
+        const ytIdToUse = ytid || getYtId(trackUid) || trackUid
+        targetTrack = {
+          uid: trackUid || `shared-${Date.now()}`,
+          id: ytIdToUse,
+          songEn: title || 'Shared Ghazal',
+          artistEn: artist || 'Ghazal Poet',
+          color: '#3d0b15',
+          type: 'yt'
         }
-        
-        pendingSharedTrackRef.current = { trackIdx: idx, forcePlay: true }
-        
-        if (ytReady.current && ytPlayer.current) {
-          loadTrack(idx, true, playlistRef.current)
-          setTonearmDown(true)
-          setPlaying(true)
-          showToast(`Playing shared ghazal: "${playlistRef.current[idx]?.songEn}"!`, 3500)
-        } else {
-          showToast('Loading shared ghazal...', 2500)
-        }
+        setPlaylist(p => [...p, targetTrack])
+        setQueue(q => [...q, targetTrack])
+        idx = currentList.length
+        currentList = [...currentList, targetTrack]
+      }
+      
+      if (note) {
+        setReceivedNote({
+          text: note,
+          track: targetTrack,
+          trackIdx: idx
+        })
+        setActiveReceivedNote(note)
+      }
+
+      pendingSharedTrackRef.current = { trackIdx: idx, track: targetTrack, forcePlay: true }
+      
+      if (ytReady.current && ytPlayer.current) {
+        loadTrack(idx, true, currentList)
+        setTonearmDown(true)
+        setPlaying(true)
+        showToast(`Playing shared ghazal: "${targetTrack.songEn}"!`, 3500)
+      } else {
+        showToast(`Loading shared ghazal: "${targetTrack.songEn}"...`, 3000)
       }
     }
   }, [loadTrack, showToast])
@@ -796,6 +826,14 @@ export default function App() {
               <div className="np-badge">Now Playing</div>
               <div className="np-song" style={{marginTop: 10, fontSize: 18, color: 'var(--gold)'}}>{curIdx >= 0 ? queue[curIdx]?.artistEn?.toUpperCase() : 'MEHFIL-E-GHAZAL'}</div>
               <div className="np-sub" style={{marginTop: 5, fontSize: 12, letterSpacing: '0.1em'}}>{curIdx >= 0 ? queue[curIdx]?.songEn?.toUpperCase() : 'Choose a card from the mehfil to begin...'}</div>
+
+              {/* Personal Message Card */}
+              {activeReceivedNote && (
+                <div className="np-personal-note">
+                  <div className="np-note-hdr">💌 Message Sent With This Ghazal</div>
+                  <div className="np-note-body">"{activeReceivedNote}"</div>
+                </div>
+              )}
 
               <div className="np-actions" style={{ marginTop: 15 }}>
                 <button 
@@ -1457,12 +1495,15 @@ function SendModal({ track, onClose, showToast }) {
   const shareUrl = useMemo(() => {
     const base = `${window.location.origin}${window.location.pathname}`
     const params = new URLSearchParams()
-    params.set('track', track.uid)
+    if (track.uid) params.set('track', track.uid)
+    if (track.id) params.set('ytid', track.id)
+    if (track.songEn) params.set('title', track.songEn)
+    if (track.artistEn) params.set('artist', track.artistEn)
     if (note.trim()) {
       params.set('note', note.trim())
     }
     return `${base}?${params.toString()}`
-  }, [track.uid, note])
+  }, [track, note])
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(shareUrl).then(() => {
